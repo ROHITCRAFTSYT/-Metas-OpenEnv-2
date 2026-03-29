@@ -2,12 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy and install Python dependencies
+# Copy and install Python dependencies (no gcc needed — pure Python only)
 COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
