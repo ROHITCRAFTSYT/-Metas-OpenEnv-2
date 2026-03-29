@@ -38,7 +38,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 API_BASE_URL = os.getenv("API_BASE_URL")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
 
@@ -488,7 +488,7 @@ def main():
         print(f"Server health: {health}")
     except Exception as e:
         print(f"[ERROR] Cannot reach server at {SERVER_URL}: {e}")
-        print("Start the server with: uvicorn server.app:app --host 0.0.0.0 --port 8000")
+        print("Start the server with: uvicorn server.app:app --host 0.0.0.0 --port 7860")
         sys.exit(1)
 
     # Initialize LLM client (optional)
