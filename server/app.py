@@ -16,7 +16,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -94,20 +94,21 @@ def health():
 
 
 @app.post("/reset", response_model=SOCObservation)
-def reset(request: ResetRequest):
+def reset(request: Optional[ResetRequest] = Body(default=None)):
     """
     Start a new episode.
 
     Args:
-        task_id: "phishing" | "lateral_movement" | "queue_management"
-        seed: RNG seed for deterministic scenario generation (default 42)
+        task_id: "phishing" | "lateral_movement" | "queue_management" (default: "phishing")
+        seed: RNG seed for deterministic scenario generation (default: 42)
 
     Returns:
         Initial SOCObservation with full alert queue.
     """
+    req = request or ResetRequest()
     with _env_lock:
         try:
-            obs = _env.reset(task_id=request.task_id, seed=request.seed)
+            obs = _env.reset(task_id=req.task_id, seed=req.seed)
             return obs
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
