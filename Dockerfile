@@ -13,7 +13,7 @@ RUN uv pip install --system --no-cache -r requirements.txt
 COPY . .
 
 # Expose port
-EXPOSE 8000
+EXPOSE 7860
 
-# Start FastAPI server
-CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start FastAPI server on port 7860 (HF Spaces default)
+CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]

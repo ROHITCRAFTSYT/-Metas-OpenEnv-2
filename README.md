@@ -4,7 +4,7 @@ emoji: 🛡️
 colorFrom: red
 colorTo: purple
 sdk: docker
-app_port: 8000
+app_port: 7860
 tags:
   - openenv
   - reinforcement-learning
