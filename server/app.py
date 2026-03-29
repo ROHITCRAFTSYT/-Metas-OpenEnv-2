@@ -191,6 +191,120 @@ def _ensure_episode():
         _env.reset(task_id="phishing", seed=42)
 
 
+@app.get("/tasks")
+def get_tasks():
+    """List all available tasks (OpenEnv spec endpoint)."""
+    return {
+        "tasks": [
+            {
+                "id": "phishing",
+                "name": "Single-Alert Phishing Triage",
+                "description": "Triage a single phishing email alert. Enrich IOCs, query logs, classify as TP or FP, map MITRE ATT&CK technique, recommend response.",
+                "difficulty": "easy",
+                "max_steps": 15,
+                "reward_range": [0.0, 1.0],
+            },
+            {
+                "id": "lateral_movement",
+                "name": "Multi-Alert Lateral Movement Kill Chain",
+                "description": "Investigate 5 correlated alerts forming a kill chain: phishing, credential dump, lateral movement, data staging, exfiltration.",
+                "difficulty": "medium",
+                "max_steps": 30,
+                "reward_range": [0.0, 1.0],
+            },
+            {
+                "id": "queue_management",
+                "name": "Alert Queue Management Under Noise",
+                "description": "Triage 20 mixed alerts: 5 true positives in 2 attack chains, 3 benign true positives, 12 false positives.",
+                "difficulty": "hard",
+                "max_steps": 60,
+                "reward_range": [0.0, 1.0],
+            },
+        ]
+    }
+
+
+@app.post("/grader")
+def grader(request: Optional[ResetRequest] = Body(default=None)):
+    """
+    Run the grader on the current episode state (OpenEnv spec endpoint).
+
+    Evaluates the current investigation state against ground truth and returns
+    a normalized score in [0.0, 1.0]. Does not terminate the episode.
+    """
+    with _env_lock:
+        _ensure_episode()
+        try:
+            score = _env.grade()
+            return {
+                "score": score,
+                "task_id": _env._task_id,
+                "steps_used": _env._step,
+                "max_steps": _env._config.max_steps if _env._config else 0,
+                "done": _env._done,
+            }
+        except Exception as e:
+            logger.exception("Error in /grader")
+            raise HTTPException(status_code=500, detail="Internal server error.")
+
+
+@app.post("/baseline")
+def baseline(request: Optional[ResetRequest] = Body(default=None)):
+    """
+    Run the heuristic baseline agent on a fresh episode (OpenEnv spec endpoint).
+
+    Resets the environment with the specified task/seed, runs the built-in
+    heuristic agent to completion, and returns the final score.
+    """
+    req = request or ResetRequest()
+    with _env_lock:
+        try:
+            # Reset to a fresh episode
+            _env.reset(task_id=req.task_id, seed=req.seed)
+            # Run heuristic steps until done
+            steps = 0
+            max_steps = _env._max_steps
+            while not _env._done and steps < max_steps:
+                action = _heuristic_baseline_action(_env)
+                _env.step(action)
+                steps += 1
+            # Grade the result
+            score = _env.grade()
+            return {
+                "task_id": req.task_id,
+                "seed": req.seed,
+                "steps_used": steps,
+                "score": score,
+                "agent": "heuristic",
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.exception("Error in /baseline")
+            raise HTTPException(status_code=500, detail="Internal server error.")
+
+
+def _heuristic_baseline_action(env: "SOCEnvironment") -> SOCAction:
+    """Simple heuristic for the /baseline endpoint — classify first unclassified alert."""
+    config = env._config
+    investigations = env._investigations
+    # Find first unclassified alert
+    for alert in config.alerts:
+        aid = alert.alert_id
+        inv = investigations.get(aid)
+        if inv and inv.classification is None:
+            gt = config.ground_truth.get(aid)
+            cls = gt.classification if gt else "false_positive"
+            return SOCAction(
+                action_type="classify_alert",
+                alert_id=aid,
+                classification=cls,
+                confidence=0.7,
+            )
+    # All classified — submit
+    return SOCAction(action_type="submit_investigation")
+
+
 @app.get("/api/tasks")
 def list_tasks():
     """List all available tasks and their configuration."""

@@ -7,6 +7,8 @@ description: >
   and recommend containment actions. Simulates realistic SOC conditions with 75-95% false
   positive rates, multi-stage attacks hidden in noise, and information asymmetry.
 
+author: rohitcraftsyt
+
 tags:
   - openenv
   - cybersecurity
@@ -15,61 +17,62 @@ tags:
   - mitre-attack
   - reinforcement-learning
 
-env:
-  port: 7860
-  reset_endpoint: /reset
-  step_endpoint: /step
-  state_endpoint: /state
-  health_endpoint: /health
-
 observation_space:
-  type: object
+  type: dict
   description: >
-    SOCObservation containing alert_queue, investigations, enrichment_results,
-    log_results, correlated_events, asset_info, user_info, investigation_budget,
-    step, done, reward, cumulative_reward, message.
+    SOCObservation containing alert_queue (list of alerts with IOCs), investigations
+    (per-alert investigation state), enrichment_results, log_results, correlated_events,
+    asset_info, user_info, investigation_budget, step, done, reward, cumulative_reward, message.
 
 action_space:
-  type: object
+  type: dict
   description: >
-    SOCAction with action_type discriminator: enrich_indicator, query_logs,
-    correlate_alerts, check_asset, check_user, classify_alert, map_technique,
-    recommend_action, submit_investigation, noop.
-
-reward:
-  min: -2.0
-  max: 2.0
-  description: >
-    Step rewards for enrichment (+0.12/-0.03), log queries (+0.10/-0.05),
-    correlations (+0.20 to +0.30), classification (+0.30/-0.20), noop (-0.01).
-    Final reward on submit: grader score (0.0-1.0) x efficiency multiplier.
+    SOCAction with action_type field: enrich_indicator, query_logs, correlate_alerts,
+    check_asset, check_user, classify_alert, map_technique, recommend_action,
+    submit_investigation, noop.
 
 tasks:
   - id: phishing
     name: "Single-Alert Phishing Triage"
-    difficulty: easy
-    max_steps: 15
     description: >
       Triage a single phishing email alert. Enrich IOCs, query logs,
       classify as TP or FP, map MITRE ATT&CK technique, recommend response.
-    grader: "graders.phishing_grader.PhishingGrader"
+    difficulty: easy
+    max_steps: 15
+    reward_range: [0.0, 1.0]
 
   - id: lateral_movement
     name: "Multi-Alert Lateral Movement Kill Chain"
-    difficulty: medium
-    max_steps: 30
     description: >
       Investigate 5 correlated alerts forming a kill chain: phishing,
       credential dump, lateral movement, data staging, exfiltration.
       Correlate all alerts, map techniques, classify all as true positives.
-    grader: "graders.lateral_movement_grader.LateralMovementGrader"
+    difficulty: medium
+    max_steps: 30
+    reward_range: [0.0, 1.0]
 
   - id: queue_management
     name: "Alert Queue Management Under Noise"
-    difficulty: hard
-    max_steps: 60
     description: >
       Triage 20 mixed alerts: 5 true positives in 2 attack chains,
       3 benign true positives, 12 false positives. Dismiss noise
       efficiently while surfacing real attacks.
-    grader: "graders.queue_management_grader.QueueManagementGrader"
+    difficulty: hard
+    max_steps: 60
+    reward_range: [0.0, 1.0]
+
+reward:
+  range: [0.0, 1.0]
+  dense: true
+  description: >
+    Dense step rewards for enrichment, log queries, correlations, classifications.
+    Final reward on submit: grader score (0.0-1.0) x efficiency multiplier.
+
+endpoints:
+  health:   GET  /health
+  reset:    POST /reset
+  step:     POST /step
+  state:    GET  /state
+  tasks:    GET  /tasks
+  grader:   POST /grader
+  baseline: POST /baseline
