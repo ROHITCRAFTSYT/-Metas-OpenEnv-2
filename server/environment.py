@@ -152,6 +152,21 @@ class SOCEnvironment:
             message=result["message"],
         )
 
+    def grade(self) -> float:
+        """Run the grader on current state without terminating the episode."""
+        if self._config is None or self._task_id is None:
+            return 0.0
+        grader_cls = GRADER_REGISTRY.get(self._task_id)
+        if grader_cls is None:
+            return 0.0
+        grader = grader_cls()
+        return grader.grade(
+            config=self._config,
+            investigations=self._investigations,
+            steps_used=self._step,
+            max_steps=self._config.max_steps,
+        )
+
     def state(self) -> EnvironmentState:
         """Return current episode state metadata."""
         classified = sum(
