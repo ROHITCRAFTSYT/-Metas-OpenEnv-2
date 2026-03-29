@@ -73,7 +73,6 @@ class LateralMovementScenario(BaseScenario):
                 "domain": [phishing_domain],
                 "file_hash": [dropper_hash],
                 "email": [attacker_email],
-                "hostname": [victim_host1],
             },
             raw_log_snippet=f"FROM={attacker_email} ATTACH=Q4_Invoice.docm HASH={dropper_hash[:12]}...",
         )
@@ -93,7 +92,6 @@ class LateralMovementScenario(BaseScenario):
             indicators={
                 "ip": [victim_ip1],
                 "file_hash": [mimikatz_hash],
-                "hostname": [victim_host1],
                 "user": [victim_username],
             },
             raw_log_snippet=f"PROCESS=chrome_helper.exe HASH={mimikatz_hash[:12]}... ACCESS=lsass.exe FLAGS=0x1fffff",
@@ -114,7 +112,6 @@ class LateralMovementScenario(BaseScenario):
             indicators={
                 "ip": [victim_ip1, lateral_ip],
                 "user": [victim_username],
-                "hostname": [victim_host1, lateral_host],
             },
             raw_log_snippet=f"USER={victim_username} SRC={victim_ip1} DST={lateral_ip} PORT=3389 AUTH=NTLM SUCCESS",
         )
