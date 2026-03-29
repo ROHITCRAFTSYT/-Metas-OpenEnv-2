@@ -1,15 +1,11 @@
 name: soc-triage-gym
-display_name: "SOC Triage Gym"
 version: "0.1.0"
 description: >
   A reinforcement learning environment simulating a Security Operations Center (SOC) analyst.
   An AI agent receives SIEM alerts and must enrich threat indicators, query log sources,
   correlate events across alerts, classify alerts as TP/FP/BTP, map findings to MITRE ATT&CK,
-  and recommend containment actions. Simulates realistic SOC conditions with ~75-95% false
+  and recommend containment actions. Simulates realistic SOC conditions with 75-95% false
   positive rates, multi-stage attacks hidden in noise, and information asymmetry.
-
-authors:
-  - name: "SOC-Triage-Gym Team"
 
 tags:
   - openenv
@@ -18,12 +14,9 @@ tags:
   - siem
   - mitre-attack
   - reinforcement-learning
-  - security-operations
 
 env:
-  image: soc-triage-gym
-  port: 8000
-  protocol: http
+  port: 7860
   reset_endpoint: /reset
   step_endpoint: /step
   state_endpoint: /state
@@ -32,37 +25,24 @@ env:
 observation_space:
   type: object
   description: >
-    Pydantic SOCObservation model containing: alert_queue (list of AlertMeta),
-    current_investigation (InvestigationState per alert), enrichment_results
-    (List[EnrichmentResult] from last enrich action), log_results (List[LogEntry]
-    from last query), correlated_events (List[CorrelatedEvent]), asset_info
-    (Optional[AssetInfo]), user_info (Optional[UserInfo]), investigation_budget
-    (steps remaining), step (int), done (bool), reward (float), cumulative_reward
-    (float), message (str).
-  schema_ref: "models.SOCObservation"
+    SOCObservation containing alert_queue, investigations, enrichment_results,
+    log_results, correlated_events, asset_info, user_info, investigation_budget,
+    step, done, reward, cumulative_reward, message.
 
 action_space:
   type: object
   description: >
-    Flat Pydantic SOCAction model discriminated by action_type. Supports:
-    enrich_indicator (indicator + indicator_type), query_logs (log_source +
-    query_alert_id + time_window_hours), correlate_alerts (alert_id_a + alert_id_b),
-    lookup_asset (hostname), lookup_user (username), classify_alert (alert_id +
-    classification + confidence), map_technique (alert_id + technique_id),
-    recommend_action (alert_id + response_action), submit_investigation, noop.
-  schema_ref: "models.SOCAction"
+    SOCAction with action_type discriminator: enrich_indicator, query_logs,
+    correlate_alerts, check_asset, check_user, classify_alert, map_technique,
+    recommend_action, submit_investigation, noop.
 
 reward:
-  range: [-2.0, 2.0]
+  min: -2.0
+  max: 2.0
   description: >
-    Step rewards: +0.10 for relevant indicator enrichment, -0.03 for irrelevant;
-    +0.10 for relevant log query, -0.05 for irrelevant, -0.03 for duplicate;
-    +0.20 for valid alert correlation, -0.03 for no shared indicator;
-    +0.30 for correct classification, -0.20 for wrong; -0.01 for noop.
-    Final reward on submit: grader score (0.0-1.0) × efficiency multiplier
-    (1.2 if ≤50% budget used, 1.0 if ≤75%, 0.85 if ≤90%, 0.7 otherwise).
-    Missed true positives penalized -0.5 to -1.0 at episode end.
-  schema_ref: "models.SOCReward"
+    Step rewards for enrichment (+0.12/-0.03), log queries (+0.10/-0.05),
+    correlations (+0.20 to +0.30), classification (+0.30/-0.20), noop (-0.01).
+    Final reward on submit: grader score (0.0-1.0) x efficiency multiplier.
 
 tasks:
   - id: phishing
@@ -70,58 +50,26 @@ tasks:
     difficulty: easy
     max_steps: 15
     description: >
-      Triage a single phishing email alert. The agent must enrich sender IP, domain,
-      and file hash; query email gateway, endpoint, DNS, and firewall logs; classify
-      the alert as TP or FP; map to MITRE ATT&CK technique(s); and recommend
-      appropriate containment actions. ~50% TP rate across seeds.
+      Triage a single phishing email alert. Enrich IOCs, query logs,
+      classify as TP or FP, map MITRE ATT&CK technique, recommend response.
     grader: "graders.phishing_grader.PhishingGrader"
-    scoring:
-      classification: 0.4
-      technique_mapping: 0.2
-      evidence_completeness: 0.2
-      response_quality: 0.2
 
   - id: lateral_movement
     name: "Multi-Alert Lateral Movement Kill Chain"
     difficulty: medium
     max_steps: 30
     description: >
-      Investigate 5 correlated alerts representing a complete attacker kill chain:
-      phishing → credential dump → lateral movement → data staging → exfiltration.
-      Agent must correlate all 5 alerts into a connected chain, map each to its
-      MITRE ATT&CK technique, classify all as true positives, and recommend
-      phase-appropriate containment for each stage.
+      Investigate 5 correlated alerts forming a kill chain: phishing,
+      credential dump, lateral movement, data staging, exfiltration.
+      Correlate all alerts, map techniques, classify all as true positives.
     grader: "graders.lateral_movement_grader.LateralMovementGrader"
-    scoring:
-      classification_accuracy: 0.3
-      technique_mapping: 0.2
-      kill_chain_reconstruction: 0.2
-      response_actions: 0.2
-      efficiency_bonus: 0.1
 
   - id: queue_management
     name: "Alert Queue Management Under Noise"
     difficulty: hard
     max_steps: 60
     description: >
-      Manage a queue of 20 mixed alerts: 12 false positives, 3 benign true positives,
-      and 2 real multi-stage attack chains hidden in the noise. Agent must prioritize
-      investigation, efficiently dismiss FPs, identify hidden attacks, and avoid
-      missing any true positive. Requires strategic resource allocation.
+      Triage 20 mixed alerts: 5 true positives in 2 attack chains,
+      3 benign true positives, 12 false positives. Dismiss noise
+      efficiently while surfacing real attacks.
     grader: "graders.queue_management_grader.QueueManagementGrader"
-    scoring:
-      f1_classification: 0.3
-      attack_chain_identification: 0.2
-      missed_tp_penalty: 0.2
-      efficiency: 0.15
-      response_quality: 0.15
-
-metadata:
-  domain: cybersecurity
-  subdomain: threat-detection
-  type: investigation-reasoning
-  language: python
-  framework: fastapi
-  base_image: python:3.11-slim
-  realistic_fp_rate: "75-95%"
-  mitre_attack_version: "14.0"
