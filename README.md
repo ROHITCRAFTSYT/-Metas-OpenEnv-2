@@ -70,7 +70,7 @@ uvicorn server.app:app --host 0.0.0.0 --port 8000
 
 ```bash
 # With an LLM
-export API_BASE_URL="https://api-inference.huggingface.co/v1"
+export API_BASE_URL="https://router.huggingface.co/v1"
 export HF_TOKEN="hf_your_token_here"
 export MODEL_NAME="meta-llama/Llama-3.1-8B-Instruct"
 export SERVER_URL="http://localhost:8000"
@@ -237,7 +237,7 @@ Adjacent alerts share indicators (IP, username, hostname). The agent must correl
   - Chain A: Credential stuffing → Account takeover → Mass exfiltration
   - Chain B: Spearphishing link → Scheduled task persistence
 - **3 Benign True Positives**: Authorized pentest, admin PsExec, IT password reset
-- **15 False Positives**: Geoblocking, AV false detections, service account noise, CDN DNS alerts, backup transfers
+- **12 False Positives**: Geoblocking, AV false detections, service account noise, CDN DNS alerts, backup transfers
 
 Agent must prioritize investigation, efficiently dismiss FPs, and surface hidden attacks.
 
@@ -255,7 +255,7 @@ Agent must prioritize investigation, efficiently dismiss FPs, and surface hidden
 ## Architecture
 
 ```
-D:/openenv-2/
+soc-triage-gym/
 ├── inference.py              # Baseline LLM agent script
 ├── models.py                 # All Pydantic v2 models (Action, Observation, etc.)
 ├── client.py                 # HTTP client wrapper
@@ -401,7 +401,7 @@ If you use SOC-Triage-Gym in research, please cite:
 @software{soc_triage_gym_2024,
   title={SOC-Triage-Gym: A Reinforcement Learning Environment for SOC Analyst Training},
   year={2024},
-  url={https://huggingface.co/spaces/your-username/soc-triage-gym}
+  url={https://huggingface.co/spaces/rohitcraftsyt/openenv2}
 }
 ```
 

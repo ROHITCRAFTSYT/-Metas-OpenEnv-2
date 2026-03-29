@@ -104,7 +104,7 @@ tasks:
     difficulty: hard
     max_steps: 60
     description: >
-      Manage a queue of 20 mixed alerts: ~15 false positives, 3 benign true positives,
+      Manage a queue of 20 mixed alerts: 12 false positives, 3 benign true positives,
       and 2 real multi-stage attack chains hidden in the noise. Agent must prioritize
       investigation, efficiently dismiss FPs, identify hidden attacks, and avoid
       missing any true positive. Requires strategic resource allocation.

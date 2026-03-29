@@ -115,7 +115,7 @@ class QueueManagementScenario(BaseScenario):
             task_id="queue_management",
             seed=self.seed,
             description=(
-                "20-alert queue: 5 TPs (2 attack chains), 3 benign TPs, 15 FPs. "
+                "20-alert queue: 5 TPs (2 attack chains), 3 benign TPs, 12 FPs. "
                 "Find the attacks hidden in the noise."
             ),
             max_steps=self.MAX_STEPS,
