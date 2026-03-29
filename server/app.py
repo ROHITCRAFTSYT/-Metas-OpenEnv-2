@@ -12,6 +12,7 @@ FastAPI runs synchronous route handlers in a thread pool executor, so
 concurrent requests are serialized by the lock.
 """
 
+import logging
 import threading
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -19,6 +20,8 @@ from typing import Optional
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from models import EnvironmentState, SOCAction, SOCObservation
 from server.environment import SOCEnvironment
@@ -60,8 +63,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
@@ -73,14 +76,6 @@ class ResetRequest(BaseModel):
     """Request body for POST /reset."""
     task_id: str = "phishing"
     seed: int = 42
-
-
-class StepResponse(BaseModel):
-    """Extended response with info field for OpenEnv compatibility."""
-    observation: SOCObservation
-    reward: float
-    done: bool
-    info: dict = {}
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +108,8 @@ def reset(request: Optional[ResetRequest] = Body(default=None)):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+            logger.exception("Error in /reset")
+            raise HTTPException(status_code=500, detail="Internal server error.")
 
 
 @app.post("/step", response_model=SOCObservation)
@@ -137,7 +133,8 @@ def step(action: SOCAction):
             obs = _env.step(action)
             return obs
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Step error: {str(e)}")
+            logger.exception("Error in /step")
+            raise HTTPException(status_code=500, detail="Internal server error.")
 
 
 @app.get("/state", response_model=EnvironmentState)
@@ -152,7 +149,8 @@ def state():
         try:
             return _env.state()
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"State error: {str(e)}")
+            logger.exception("Error in /state")
+            raise HTTPException(status_code=500, detail="Internal server error.")
 
 
 @app.get("/")
