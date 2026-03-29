@@ -281,7 +281,7 @@ class QueueManagementScenario(BaseScenario):
             source_system="EDR",
             timestamp=self._timestamp(hours_ago=4.5),
             rule_triggered="PERSIST_SCHEDULED_TASK_001",
-            indicators={"ip": [victim_ip], "file_hash": [payload_hash], "hostname": [victim_host], "user": [victim_user]},
+            indicators={"ip": [victim_ip], "file_hash": [payload_hash], "user": [victim_user]},
             raw_log_snippet=f"HOST={victim_host} USER={victim_user} TASK=WindowsUpdateHelper CMD=powershell -enc ...",
         )
 

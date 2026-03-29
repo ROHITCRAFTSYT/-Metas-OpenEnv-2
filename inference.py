@@ -309,7 +309,7 @@ def run_task(
         reward = obs.get("reward", 0.0)
         cumulative = obs.get("cumulative_reward", 0.0)
         if verbose:
-            print(f" → reward={reward:+.3f} cumulative={cumulative:.3f}")
+            print(f" -> reward={reward:+.3f} cumulative={cumulative:.3f}")
 
         # Update message history
         messages.append({"role": "assistant", "content": json.dumps(action_dict)})
@@ -332,11 +332,17 @@ def run_task(
 # Heuristic Fallback Agent (for testing without LLM)
 # ---------------------------------------------------------------------------
 
+# Track correlation attempts across calls (reset on each task run)
+_attempted_correlations: set = set()
+
 def _heuristic_action(obs: dict, step: int) -> dict:
     """
     Simple rule-based agent for testing without an LLM.
     Systematically investigates each alert.
     """
+    # Only enrich these valid IndicatorType values
+    VALID_INDICATOR_TYPES = {"ip", "domain", "file_hash", "email", "url", "user"}
+
     alerts = obs.get("alert_queue", [])
     investigations = obs.get("investigations", {})
     budget = obs.get("investigation_budget", 0)
@@ -358,20 +364,36 @@ def _heuristic_action(obs: dict, step: int) -> dict:
     queried = set(inv.get("queried_sources", {}).keys())
     enriched = set(inv.get("enriched_indicators", {}).keys())
 
-    # Enrich IOCs first
+    # Enrich IOCs first (only valid indicator types)
     for itype, values in indicators.items():
+        if itype not in VALID_INDICATOR_TYPES:
+            continue
         for val in values[:2]:  # max 2 per type
             if val not in enriched:
                 return {
                     "action_type": "enrich_indicator",
                     "indicator": val,
-                    "indicator_type": itype if itype != "file_hash" else "file_hash",
+                    "indicator_type": itype,
                     "query_alert_id": alert_id,
                 }
 
-    # Query key log sources
+    # Query at least one primary log source before classifying
+    primary_sources = ["email_gateway", "endpoint", "auth", "firewall"]
+    queried_primary = [s for s in primary_sources if s in queried]
+    if not queried_primary:
+        return {
+            "action_type": "query_logs",
+            "log_source": primary_sources[0],
+            "query_alert_id": alert_id,
+            "time_window_hours": 24,
+        }
+
+    # Budget-aware: with many alerts, limit log queries to conserve steps
+    steps_per_alert = max(1, budget // max(1, len(unclassified_alerts)))
+    max_log_queries = 2 if steps_per_alert <= 4 else 8
+
     log_priority = ["email_gateway", "endpoint", "auth", "firewall", "dns", "proxy", "ids", "cloud_trail"]
-    for source in log_priority:
+    for source in log_priority[:max_log_queries]:
         if source not in queried:
             return {
                 "action_type": "query_logs",
@@ -380,15 +402,17 @@ def _heuristic_action(obs: dict, step: int) -> dict:
                 "time_window_hours": 24,
             }
 
-    # Try to correlate with other alerts
-    for other_alert in alerts:
-        if other_alert["alert_id"] != alert_id:
-            corrs = inv.get("correlations_found", [])
-            already_correlated = any(
-                set(c.get("alert_ids", [])) == {alert_id, other_alert["alert_id"]}
-                for c in corrs
-            )
-            if not already_correlated:
+    # Try to correlate with adjacent alerts only (skip when budget is very tight)
+    global _attempted_correlations
+    adjacent = [a for a in alerts if a["alert_id"] != alert_id][:2]
+    corr_attempts_for_alert = sum(
+        1 for pair in _attempted_correlations if alert_id in pair
+    )
+    if steps_per_alert > 4 and corr_attempts_for_alert < 2:
+        for other_alert in adjacent:
+            pair = frozenset([alert_id, other_alert["alert_id"]])
+            if pair not in _attempted_correlations:
+                _attempted_correlations.add(pair)
                 return {
                     "action_type": "correlate_alerts",
                     "alert_id_a": alert_id,
@@ -480,6 +504,7 @@ def main():
 
     with httpx.Client(base_url=SERVER_URL, timeout=60) as server_client:
         for task_id in tasks:
+            _attempted_correlations.clear()  # reset per-task
             task_score = run_task(
                 task_id=task_id,
                 server_client=server_client,
@@ -496,7 +521,7 @@ def main():
     print("FINAL RESULTS")
     print(f"{'='*60}")
     for task_id, score in results.items():
-        bar = "█" * int(score * 20)
+        bar = "#" * max(0, int(score * 20))
         print(f"  {task_id:<25} {score:.4f}  {bar}")
     avg_score = sum(results.values()) / len(results)
     print(f"  {'AVERAGE':<25} {avg_score:.4f}")
