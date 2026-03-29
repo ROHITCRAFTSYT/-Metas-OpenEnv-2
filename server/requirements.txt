@@ -7,3 +7,4 @@ python-multipart==0.0.20
 httpx==0.28.1
 anyio==4.8.0
 starlette==0.41.3
+openenv-core>=0.2.0

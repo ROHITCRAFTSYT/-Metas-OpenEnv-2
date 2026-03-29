@@ -513,3 +513,13 @@ def query_log_source(
 def create_app() -> FastAPI:
     """Return the FastAPI application instance."""
     return app
+
+
+def main():
+    """Entry point for the SOC-Triage-Gym server (used by [project.scripts])."""
+    import uvicorn
+    uvicorn.run("server.app:app", host="0.0.0.0", port=7860, reload=False)
+
+
+if __name__ == "__main__":
+    main()
