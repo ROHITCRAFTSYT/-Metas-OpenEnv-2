@@ -47,7 +47,7 @@ class SOCEnvironment:
         self._done: bool = False
         self._task_id: Optional[str] = None
         self._episode_id: Optional[str] = None
-        self._action_history: list = []  # For loop detection
+        self._action_history: list[str] = []  # For loop detection
 
     # ------------------------------------------------------------------
     # Public API

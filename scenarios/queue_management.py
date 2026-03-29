@@ -4,7 +4,7 @@ Queue Management Scenario Generator — Task 3 (Hard)
 Generates 20 alerts in shuffled order:
   - 2 real multi-stage attack chains (5 TP alerts total)
   - 3 benign true positives (legitimate activity triggering detection rules)
-  - 15 false positives (realistic SOC noise)
+  - 12 false positives (realistic SOC noise)
 
 The agent must triage all 20, dismiss FPs efficiently, and surface the real attacks.
 """

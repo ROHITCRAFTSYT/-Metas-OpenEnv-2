@@ -26,7 +26,12 @@ import time
 from typing import Optional
 
 import httpx
-from openai import OpenAI, APIError, APITimeoutError
+try:
+    from openai import OpenAI, APIError, APITimeoutError
+except ImportError:
+    OpenAI = None  # type: ignore[assignment,misc]
+    APIError = Exception  # type: ignore[assignment,misc]
+    APITimeoutError = Exception  # type: ignore[assignment,misc]
 
 # ---------------------------------------------------------------------------
 # Configuration (mandatory variable names per OpenEnv spec)
@@ -488,7 +493,7 @@ def main():
 
     # Initialize LLM client (optional)
     llm_client = None
-    if API_BASE_URL and API_KEY and MODEL_NAME:
+    if API_BASE_URL and API_KEY and MODEL_NAME and OpenAI is not None:
         try:
             llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
             print(f"LLM client initialized: {API_BASE_URL}")

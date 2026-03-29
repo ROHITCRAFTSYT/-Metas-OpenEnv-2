@@ -75,11 +75,21 @@ TECHNIQUES: Dict[str, Dict[str, str]] = {
     },
 
     # Persistence
+    "T1547": {
+        "name": "Boot or Logon Autostart Execution",
+        "tactic": "persistence",
+        "description": "Adversaries may configure system settings to automatically execute a program during system boot or logon.",
+    },
     "T1547.001": {
         "name": "Registry Run Keys / Startup Folder",
         "tactic": "persistence",
         "description": "Adversaries may achieve persistence by adding a program to a commonly used registry run key.",
         "parent": "T1547",
+    },
+    "T1053": {
+        "name": "Scheduled Task/Job",
+        "tactic": "persistence",
+        "description": "Adversaries may abuse task scheduling functionality to facilitate initial or recurring execution of malicious code.",
     },
     "T1053.005": {
         "name": "Scheduled Task",
@@ -191,6 +201,11 @@ TECHNIQUES: Dict[str, Dict[str, str]] = {
         "description": "Adversaries may stage collected data in a central location or directory on the local system.",
         "parent": "T1074",
     },
+    "T1560": {
+        "name": "Archive Collected Data",
+        "tactic": "collection",
+        "description": "Adversaries may compress and/or encrypt data that is collected prior to exfiltration.",
+    },
     "T1560.001": {
         "name": "Archive via Utility",
         "tactic": "collection",
@@ -214,6 +229,11 @@ TECHNIQUES: Dict[str, Dict[str, str]] = {
         "name": "Ingress Tool Transfer",
         "tactic": "command-and-control",
         "description": "Adversaries may transfer tools or other files from an external system into a compromised environment.",
+    },
+    "T1132": {
+        "name": "Data Encoding",
+        "tactic": "command-and-control",
+        "description": "Adversaries may encode data to make the content of command and control traffic more difficult to detect.",
     },
     "T1132.001": {
         "name": "Standard Encoding",
