@@ -92,7 +92,62 @@ class ResetRequest(BaseModel):
 @app.get("/health")
 def health():
     """Liveness check — returns 200 when server is running."""
-    return {"status": "ok", "version": "0.1.0", "env": "soc-triage-gym"}
+    return {"status": "healthy", "version": "0.1.0", "env": "soc-triage-gym"}
+
+
+@app.get("/metadata")
+def metadata():
+    """Environment metadata (OpenEnv runtime spec)."""
+    return {
+        "name": "soc-triage-gym",
+        "version": "0.1.0",
+        "description": (
+            "A reinforcement learning environment simulating a Security Operations Center "
+            "(SOC) analyst. The agent investigates SIEM alerts by enriching threat "
+            "indicators, querying log sources, correlating events, and classifying alerts "
+            "with MITRE ATT&CK technique mapping."
+        ),
+        "tasks": ["phishing", "lateral_movement", "queue_management"],
+        "author": "rohitcraftsyt",
+        "tags": ["openenv", "cybersecurity", "soc", "siem", "mitre-attack", "reinforcement-learning"],
+    }
+
+
+@app.get("/schema")
+def schema():
+    """Action, observation and state JSON schemas (OpenEnv runtime spec)."""
+    from models import SOCAction, SOCObservation, EnvironmentState
+    return {
+        "action": SOCAction.model_json_schema(),
+        "observation": SOCObservation.model_json_schema(),
+        "state": EnvironmentState.model_json_schema(),
+    }
+
+
+@app.post("/mcp")
+def mcp_endpoint(request: Optional[dict] = Body(default=None)):
+    """MCP JSON-RPC stub (OpenEnv runtime spec)."""
+    req = request or {}
+    method = req.get("method", "")
+    req_id = req.get("id", 1)
+    # Return a minimal valid JSON-RPC 2.0 response
+    if method == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "tools": [
+                    {"name": "reset", "description": "Start a new episode"},
+                    {"name": "step", "description": "Execute an action"},
+                    {"name": "state", "description": "Get current episode state"},
+                ]
+            },
+        }
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "result": {"status": "ok", "env": "soc-triage-gym"},
+    }
 
 
 @app.post("/reset", response_model=SOCObservation)
