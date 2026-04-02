@@ -26,11 +26,13 @@ from typing import List, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 from models import EnvironmentState, SOCAction, SOCObservation
+from server.ui import UI_HTML
 from server.environment import SOCEnvironment
 
 
@@ -215,6 +217,12 @@ def state():
             raise HTTPException(status_code=500, detail="Internal server error.")
 
 
+@app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
+def ui():
+    """Interactive browser dashboard for the SOC Triage Gym environment."""
+    return UI_HTML
+
+
 @app.get("/")
 def root():
     """Environment info endpoint."""
@@ -290,9 +298,11 @@ def grader(request: Optional[ResetRequest] = Body(default=None)):
     with _env_lock:
         _ensure_episode()
         try:
-            score = _env.grade()
+            score, breakdown, feedback = _env.grade_with_breakdown()
             return {
                 "score": score,
+                "breakdown": breakdown,
+                "feedback": feedback,
                 "task_id": _env._task_id,
                 "steps_used": _env._step,
                 "max_steps": _env._config.max_steps if _env._config else 0,
@@ -323,13 +333,15 @@ def baseline(request: Optional[ResetRequest] = Body(default=None)):
                 action = _heuristic_baseline_action(_env)
                 _env.step(action)
                 steps += 1
-            # Grade the result
-            score = _env.grade()
+            # Grade the result with breakdown
+            score, breakdown, feedback = _env.grade_with_breakdown()
             return {
                 "task_id": req.task_id,
                 "seed": req.seed,
                 "steps_used": steps,
                 "score": score,
+                "breakdown": breakdown,
+                "feedback": feedback,
                 "agent": "heuristic",
             }
         except ValueError as e:
@@ -358,6 +370,46 @@ def _heuristic_baseline_action(env: "SOCEnvironment") -> SOCAction:
             )
     # All classified — submit
     return SOCAction(action_type="submit_investigation")
+
+
+@app.get("/tasks/{task_id}")
+def get_task(task_id: str):
+    """Get details for a single task by ID."""
+    tasks = {
+        "phishing": {
+            "id": "phishing",
+            "name": "Single-Alert Phishing Triage",
+            "description": "Triage a single phishing email alert. Enrich IOCs, query logs, classify as TP or FP, map MITRE ATT&CK technique, recommend response.",
+            "difficulty": "easy",
+            "max_steps": 15,
+            "reward_range": [0.0, 1.0],
+            "num_alerts": 1,
+            "grader_weights": {"classification": 0.4, "technique_mapping": 0.2, "evidence": 0.2, "response": 0.2},
+        },
+        "lateral_movement": {
+            "id": "lateral_movement",
+            "name": "Multi-Alert Lateral Movement Kill Chain",
+            "description": "Investigate 5 correlated alerts forming a kill chain: phishing, credential dump, lateral movement, data staging, exfiltration.",
+            "difficulty": "medium",
+            "max_steps": 30,
+            "reward_range": [0.0, 1.0],
+            "num_alerts": 5,
+            "grader_weights": {"classification": 0.3, "technique_mapping": 0.2, "kill_chain": 0.2, "response": 0.2, "efficiency": 0.1},
+        },
+        "queue_management": {
+            "id": "queue_management",
+            "name": "Alert Queue Management Under Noise",
+            "description": "Triage 20 mixed alerts: 5 true positives in 2 attack chains, 3 benign true positives, 12 false positives.",
+            "difficulty": "hard",
+            "max_steps": 60,
+            "reward_range": [0.0, 1.0],
+            "num_alerts": 20,
+            "grader_weights": {"f1_score": 0.3, "attack_chains": 0.2, "tp_coverage": 0.2, "efficiency": 0.15, "response": 0.15},
+        },
+    }
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found. Valid: {list(tasks.keys())}")
+    return tasks[task_id]
 
 
 @app.get("/api/tasks")

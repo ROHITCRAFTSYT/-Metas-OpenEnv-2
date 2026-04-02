@@ -58,6 +58,40 @@ class QueueManagementGrader(BaseGrader):
 
         return self._clamp(final)
 
+    def grade_with_breakdown(self, config, investigations, steps_used, max_steps):
+        """Grade and return (score, breakdown, feedback)."""
+        gt = config.ground_truth
+        f1 = self._compute_f1(investigations, gt)
+        chain_score = self._attack_chain_score(investigations, gt)
+        missed_tp_score = self._missed_tp_score(investigations, gt)
+        efficiency_score = self._efficiency_score(steps_used, max_steps)
+        response_score = self._response_quality(config, investigations)
+
+        final = self._clamp(
+            0.30 * f1 + 0.20 * chain_score + 0.20 * missed_tp_score
+            + 0.15 * efficiency_score + 0.15 * response_score
+        )
+
+        # Count unclassified alerts
+        unclassified = sum(1 for inv in investigations.values() if inv.classification is None)
+        feedback_parts = []
+        if unclassified > 0:
+            feedback_parts.append(f"{unclassified} alerts left unclassified.")
+        if f1 < 0.8:
+            feedback_parts.append(f"F1 score {int(f1*100)}% — check FP dismissal and TP escalation balance.")
+        if chain_score < 1.0:
+            feedback_parts.append(f"Only {int(chain_score*100)}% of attack chains identified.")
+        if missed_tp_score < 1.0:
+            feedback_parts.append(f"Missed true positives — high cost to SOC.")
+
+        return final, {
+            "f1_score": round(f1, 3),
+            "attack_chains_found": round(chain_score, 3),
+            "true_positive_coverage": round(missed_tp_score, 3),
+            "efficiency": round(efficiency_score, 3),
+            "response_quality": round(response_score, 3),
+        }, " ".join(feedback_parts) or "Excellent queue management performance."
+
     def _compute_f1(
         self,
         investigations: Dict[str, InvestigationState],

@@ -115,3 +115,78 @@ class PhishingGrader(BaseGrader):
         )
 
         return self._clamp(final)
+
+    def grade_with_breakdown(self, config, investigations, steps_used, max_steps):
+        """Grade and return (score, breakdown, feedback)."""
+        if not config.alerts:
+            return 0.0, {}, "No alerts in episode."
+
+        alert_id = config.alerts[0].alert_id
+        inv = investigations.get(alert_id)
+        gt = config.ground_truth
+        expected_class = gt.alert_classifications.get(alert_id)
+
+        from models import AlertClassification
+        if inv is None or inv.classification is None:
+            classification_score = 0.0
+        elif inv.classification == expected_class:
+            classification_score = 1.0
+        else:
+            classification_score = 0.0
+
+        if expected_class == AlertClassification.FALSE_POSITIVE:
+            technique_score = 1.0 if (inv is None or not inv.mapped_techniques) else 0.5
+        else:
+            expected_techniques = gt.expected_techniques.get(alert_id, [])
+            if not expected_techniques:
+                technique_score = 1.0
+            elif inv is None or not inv.mapped_techniques:
+                technique_score = 0.0
+            else:
+                mapped = set(inv.mapped_techniques)
+                expected = set(expected_techniques)
+                exact = mapped & expected
+                parent_credit = sum(0.5 for t in expected if t not in mapped and t.split(".")[0] in mapped)
+                technique_score = min((len(exact) + parent_credit) / len(expected), 1.0)
+
+        relevant_sources = gt.relevant_log_sources.get(alert_id, [])
+        if not relevant_sources:
+            evidence_score = 1.0
+        elif inv is None:
+            evidence_score = 0.0
+        else:
+            queried = set(inv.queried_sources.keys())
+            expected_sources = {s.value for s in relevant_sources}
+            evidence_score = len(queried & expected_sources) / len(expected_sources)
+
+        expected_actions = gt.expected_response_actions.get(alert_id, [])
+        if not expected_actions or expected_class == AlertClassification.FALSE_POSITIVE:
+            response_score = 1.0
+        elif inv is None:
+            response_score = 0.0
+        else:
+            recommended = set(inv.recommended_actions)
+            expected = set(expected_actions)
+            response_score = len(recommended & expected) / len(expected) if expected else 1.0
+
+        final = self._clamp(
+            0.4 * classification_score + 0.2 * technique_score
+            + 0.2 * evidence_score + 0.2 * response_score
+        )
+
+        feedback_parts = []
+        if classification_score < 1.0:
+            feedback_parts.append(f"Alert classified as '{inv.classification if inv else 'unclassified'}', expected '{expected_class}'.")
+        if technique_score < 1.0:
+            feedback_parts.append(f"MITRE technique mapping incomplete ({int(technique_score*100)}%).")
+        if evidence_score < 1.0:
+            feedback_parts.append(f"Only {int(evidence_score*100)}% of relevant log sources queried.")
+        if response_score < 1.0:
+            feedback_parts.append(f"Response actions {int(response_score*100)}% complete.")
+
+        return final, {
+            "classification": round(classification_score, 3),
+            "technique_mapping": round(technique_score, 3),
+            "evidence_gathered": round(evidence_score, 3),
+            "response_quality": round(response_score, 3),
+        }, " ".join(feedback_parts) or "All components scored correctly."
