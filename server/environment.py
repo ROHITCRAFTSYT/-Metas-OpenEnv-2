@@ -167,6 +167,21 @@ class SOCEnvironment:
             max_steps=self._config.max_steps,
         )
 
+    def grade_with_breakdown(self) -> tuple:
+        """Run grader and return (score, breakdown_dict, feedback_str)."""
+        if self._config is None or self._task_id is None:
+            return 0.0, {}, "No active episode."
+        grader_cls = GRADER_REGISTRY.get(self._task_id)
+        if grader_cls is None:
+            return 0.0, {}, "No grader registered."
+        grader = grader_cls()
+        return grader.grade_with_breakdown(
+            config=self._config,
+            investigations=self._investigations,
+            steps_used=self._step,
+            max_steps=self._config.max_steps,
+        )
+
     def state(self) -> EnvironmentState:
         """Return current episode state metadata."""
         classified = sum(

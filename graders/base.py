@@ -37,6 +37,21 @@ class BaseGrader(ABC):
         """
         ...
 
+    def grade_with_breakdown(
+        self,
+        config: "ScenarioConfig",
+        investigations: "Dict[str, InvestigationState]",
+        steps_used: int,
+        max_steps: int,
+    ) -> tuple:
+        """
+        Grade and return (score, breakdown_dict, feedback_str).
+        Subclasses override this for per-component breakdowns.
+        Default delegates to grade() with a minimal breakdown.
+        """
+        score = self.grade(config, investigations, steps_used, max_steps)
+        return score, {"total": score}, ""
+
     # ------------------------------------------------------------------
     # Shared helper methods
     # ------------------------------------------------------------------

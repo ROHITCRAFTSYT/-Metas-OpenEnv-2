@@ -57,6 +57,36 @@ class LateralMovementGrader(BaseGrader):
 
         return self._clamp(final)
 
+    def grade_with_breakdown(self, config, investigations, steps_used, max_steps):
+        """Grade and return (score, breakdown, feedback)."""
+        gt = config.ground_truth
+        classification_score = self._classification_accuracy(config, investigations)
+        technique_score = self._technique_accuracy(config, investigations, only_tps=True)
+        chain_score = self._chain_reconstruction_score(investigations, gt.kill_chain_order or [])
+        response_score = self._response_quality(config, investigations)
+        efficiency_score = self._efficiency_score(steps_used, max_steps)
+
+        final = self._clamp(
+            0.30 * classification_score + 0.20 * technique_score
+            + 0.20 * chain_score + 0.20 * response_score + 0.10 * efficiency_score
+        )
+
+        feedback_parts = []
+        if classification_score < 0.8:
+            feedback_parts.append(f"Classification accuracy {int(classification_score*100)}% — some alerts misclassified.")
+        if chain_score < 0.8:
+            feedback_parts.append(f"Kill chain reconstruction {int(chain_score*100)}% — correlate adjacent alerts.")
+        if technique_score < 0.8:
+            feedback_parts.append(f"ATT&CK technique mapping {int(technique_score*100)}%.")
+
+        return final, {
+            "classification": round(classification_score, 3),
+            "technique_mapping": round(technique_score, 3),
+            "kill_chain_reconstruction": round(chain_score, 3),
+            "response_quality": round(response_score, 3),
+            "efficiency": round(efficiency_score, 3),
+        }, " ".join(feedback_parts) or "Strong performance across all components."
+
     def _chain_reconstruction_score(
         self,
         investigations: Dict[str, InvestigationState],
