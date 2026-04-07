@@ -226,8 +226,10 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 
 
 def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
+    # Score must be strictly (0, 1) — clamp here as final safety net
+    score = max(0.001, min(0.999, score))
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.4f} rewards={rewards_str}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -262,8 +264,8 @@ def run_task(
         obs = reset_resp.json()
     except (httpx.HTTPError, json.JSONDecodeError, ValueError) as e:
         print(f"[ERROR] Failed to reset: {type(e).__name__}: {e}")
-        log_end(success=False, steps=0, score=0.0, rewards=[])
-        return 0.0
+        log_end(success=False, steps=0, score=0.001, rewards=[])
+        return 0.001
 
     print(f"Episode started. Alerts: {len(obs.get('alert_queue', []))}. Budget: {obs.get('investigation_budget')} steps.")
 
