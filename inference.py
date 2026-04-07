@@ -206,6 +206,29 @@ def parse_action(response_text: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Structured Stdout Logging (required by OpenEnv evaluation harness)
+# ---------------------------------------------------------------------------
+
+ENV_NAME = "soc-triage-gym"
+
+
+def log_start(task: str, model: str) -> None:
+    print(f"[START] task={task} env={ENV_NAME} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str] = None) -> None:
+    action_inline = action.replace("\n", " ").replace("\r", "")
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(f"[STEP] step={step} action={action_inline} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+
+
+def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+
+
+# ---------------------------------------------------------------------------
 # Task Runner
 # ---------------------------------------------------------------------------
 
@@ -222,9 +245,13 @@ def run_task(
     Returns:
         Final cumulative reward (float).
     """
+    model_label = MODEL_NAME or "heuristic"
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()} (seed={seed})")
     print(f"{'='*60}")
+    log_start(task_id, model_label)
+
+    step_rewards: list = []
 
     # Reset environment
     try:
@@ -233,6 +260,7 @@ def run_task(
         obs = reset_resp.json()
     except (httpx.HTTPError, json.JSONDecodeError, ValueError) as e:
         print(f"[ERROR] Failed to reset: {type(e).__name__}: {e}")
+        log_end(success=False, steps=0, score=0.0, rewards=[])
         return 0.0
 
     print(f"Episode started. Alerts: {len(obs.get('alert_queue', []))}. Budget: {obs.get('investigation_budget')} steps.")
@@ -309,11 +337,16 @@ def run_task(
             obs = step_resp.json()
         except (httpx.HTTPError, json.JSONDecodeError, ValueError) as e:
             print(f"\n  [Step Error] {type(e).__name__}: {e}")
+            log_step(step, json.dumps(action_dict), 0.0, True, error=str(e))
+            step_rewards.append(0.0)
             obs["done"] = True
             break
 
         reward = obs.get("reward", 0.0)
+        done = obs.get("done", False)
         cumulative = obs.get("cumulative_reward", 0.0)
+        step_rewards.append(reward)
+        log_step(step, json.dumps(action_dict), reward, done)
         if verbose:
             print(f" -> reward={reward:+.3f} cumulative={cumulative:.3f}")
 
@@ -330,6 +363,7 @@ def run_task(
 
     final_score = obs.get("cumulative_reward", 0.0)
     elapsed_total = time.time() - task_start
+    log_end(success=True, steps=step, score=final_score, rewards=step_rewards)
     print(f"\nTask complete in {elapsed_total:.1f}s | Steps: {step} | Final score: {final_score:.4f}")
     return final_score
 
@@ -341,19 +375,115 @@ def run_task(
 # Track correlation attempts across calls (reset on each task run)
 _attempted_correlations: set = set()
 
+def _infer_technique(alert: dict) -> str:
+    """Infer MITRE ATT&CK technique from alert title and source system."""
+    title = alert.get("title", "").lower()
+    source = alert.get("source_system", "").lower()
+
+    # Phishing / initial access
+    if "phish" in title or "macro" in title:
+        return "T1566.001"
+    # Credential dumping
+    if "lsass" in title or "credential" in title or "mimikatz" in title:
+        return "T1003.001"
+    # Lateral movement / RDP
+    if "rdp" in title or "lateral" in title:
+        return "T1021.001"
+    # Data staging
+    if "staging" in title or "archive" in title or "large" in title.split("file")[0:1]:
+        return "T1074.001"
+    # Exfiltration
+    if "exfil" in title or "outbound" in title or "transfer" in title:
+        return "T1041"
+    # Credential stuffing / brute force
+    if "brute" in title or "stuffing" in title or "failed login" in title:
+        return "T1110.004"
+    # Account takeover
+    if "takeover" in title or "impossible travel" in title:
+        return "T1078"
+    # Persistence / scheduled task
+    if "scheduled" in title or "persistence" in title or "cron" in title:
+        return "T1053.005"
+    # Spearphishing link
+    if "spearphish" in title or "click" in title:
+        return "T1566.002"
+    # Data destruction
+    if "delet" in title or "wipe" in title or "destruction" in title:
+        return "T1485"
+    # USB / removable media exfil
+    if "usb" in title or "removable" in title:
+        return "T1052.001"
+    # Insider / unauthorized access
+    if "insider" in title or "unauthorized" in title or "privilege" in title:
+        return "T1078"
+    # VPN anomaly
+    if "vpn" in title:
+        return "T1133"
+    # PowerShell / command execution
+    if "powershell" in title or "script" in title:
+        return "T1059.001"
+    # Default fallback based on source
+    if "email" in source:
+        return "T1566.001"
+    if "endpoint" in source or "edr" in source:
+        return "T1059.001"
+    if "firewall" in source:
+        return "T1071.001"
+    return "T1566.001"
+
+
+def _infer_response_action(alert: dict, classification: str) -> str:
+    """Infer appropriate response action based on alert context."""
+    if classification == "false_positive":
+        return "no_action"
+
+    title = alert.get("title", "").lower()
+    source = alert.get("source_system", "").lower()
+    indicators = alert.get("indicators", {})
+
+    # Credential-related → disable account + reset password
+    if "credential" in title or "lsass" in title or "password" in title or "brute" in title:
+        return "disable_account"
+    # Lateral movement / RDP → revoke sessions
+    if "rdp" in title or "lateral" in title or "takeover" in title:
+        return "revoke_sessions"
+    # Malware / file-based → quarantine
+    if "malware" in title or "macro" in title or "archive" in title or "file" in title:
+        return "quarantine_file"
+    # Exfiltration / C2 → block IP
+    if "exfil" in title or "c2" in title or "outbound" in title or "transfer" in title:
+        return "block_ip"
+    # Phishing → isolate endpoint
+    if "phish" in title:
+        return "isolate_endpoint"
+    # Domain-based threats → block domain
+    if indicators.get("domain"):
+        return "block_domain"
+    # IP-based threats → block IP
+    if indicators.get("ip"):
+        return "block_ip"
+    # Endpoint threats → isolate
+    if "endpoint" in source or "edr" in source:
+        return "isolate_endpoint"
+    return "block_ip"
+
+
 def _heuristic_action(obs: dict, step: int) -> dict:
     """
-    Simple rule-based agent for testing without an LLM.
-    Systematically investigates each alert.
+    Smart rule-based agent that systematically investigates alerts.
+    Uses contextual clues from alert titles, sources, and enrichment to make
+    intelligent classification, technique mapping, and response decisions.
     """
-    # Only enrich these valid IndicatorType values
     VALID_INDICATOR_TYPES = {"ip", "domain", "file_hash", "email", "url", "user"}
 
     alerts = obs.get("alert_queue", [])
     investigations = obs.get("investigations", {})
     budget = obs.get("investigation_budget", 0)
 
-    # Find first unclassified alert
+    # Build alert lookup
+    alert_by_id = {a["alert_id"]: a for a in alerts}
+
+    # Find unclassified alerts
     unclassified_alerts = [
         a for a in alerts
         if investigations.get(a["alert_id"], {}).get("classification") is None
@@ -361,6 +491,12 @@ def _heuristic_action(obs: dict, step: int) -> dict:
 
     if not unclassified_alerts:
         return {"action_type": "submit_investigation"}
+
+    # Prioritize high-severity alerts first
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    unclassified_alerts.sort(
+        key=lambda a: severity_order.get(a.get("severity", "info"), 4)
+    )
 
     target = unclassified_alerts[0]
     alert_id = target["alert_id"]
@@ -370,11 +506,11 @@ def _heuristic_action(obs: dict, step: int) -> dict:
     queried = set(inv.get("queried_sources", {}).keys())
     enriched = set(inv.get("enriched_indicators", {}).keys())
 
-    # Enrich IOCs first (only valid indicator types)
+    # Phase 1: Enrich IOCs (only valid indicator types, max 2 per type)
     for itype, values in indicators.items():
         if itype not in VALID_INDICATOR_TYPES:
             continue
-        for val in values[:2]:  # max 2 per type
+        for val in values[:2]:
             if val not in enriched:
                 return {
                     "action_type": "enrich_indicator",
@@ -383,23 +519,29 @@ def _heuristic_action(obs: dict, step: int) -> dict:
                     "query_alert_id": alert_id,
                 }
 
-    # Query at least one primary log source before classifying
-    primary_sources = ["email_gateway", "endpoint", "auth", "firewall"]
-    queried_primary = [s for s in primary_sources if s in queried]
-    if not queried_primary:
-        return {
-            "action_type": "query_logs",
-            "log_source": primary_sources[0],
-            "query_alert_id": alert_id,
-            "time_window_hours": 24,
-        }
+    # Phase 2: Query relevant log sources based on alert context
+    title_lower = target.get("title", "").lower()
+    source_lower = target.get("source_system", "").lower()
 
-    # Budget-aware: with many alerts, limit log queries to conserve steps
+    # Choose log sources based on alert type for better evidence scores
+    if "email" in title_lower or "phish" in title_lower:
+        smart_sources = ["email_gateway", "endpoint", "dns", "firewall"]
+    elif "endpoint" in source_lower or "edr" in source_lower or "credential" in title_lower:
+        smart_sources = ["endpoint", "auth", "ids", "firewall"]
+    elif "firewall" in source_lower or "exfil" in title_lower or "outbound" in title_lower:
+        smart_sources = ["firewall", "proxy", "ids", "endpoint"]
+    elif "auth" in source_lower or "rdp" in title_lower or "lateral" in title_lower:
+        smart_sources = ["auth", "endpoint", "firewall", "ids"]
+    elif "dlp" in source_lower or "file" in title_lower or "stag" in title_lower:
+        smart_sources = ["endpoint", "auth", "firewall", "proxy"]
+    else:
+        smart_sources = ["endpoint", "auth", "firewall", "email_gateway"]
+
+    # Budget-aware log query limit
     steps_per_alert = max(1, budget // max(1, len(unclassified_alerts)))
-    max_log_queries = 2 if steps_per_alert <= 4 else 8
+    max_log_queries = min(len(smart_sources), 2 if steps_per_alert <= 4 else 4)
 
-    log_priority = ["email_gateway", "endpoint", "auth", "firewall", "dns", "proxy", "ids", "cloud_trail"]
-    for source in log_priority[:max_log_queries]:
+    for source in smart_sources[:max_log_queries]:
         if source not in queried:
             return {
                 "action_type": "query_logs",
@@ -408,60 +550,120 @@ def _heuristic_action(obs: dict, step: int) -> dict:
                 "time_window_hours": 24,
             }
 
-    # Try to correlate with adjacent alerts only (skip when budget is very tight)
+    # Phase 3: Correlate with other alerts (crucial for kill chain reconstruction)
     global _attempted_correlations
-    adjacent = [a for a in alerts if a["alert_id"] != alert_id][:2]
-    corr_attempts_for_alert = sum(
-        1 for pair in _attempted_correlations if alert_id in pair
-    )
-    if steps_per_alert > 4 and corr_attempts_for_alert < 2:
-        for other_alert in adjacent:
-            pair = frozenset([alert_id, other_alert["alert_id"]])
-            if pair not in _attempted_correlations:
+    if steps_per_alert > 3:
+        other_alerts = [a for a in alerts if a["alert_id"] != alert_id]
+        # Prioritize correlating alerts that share indicators
+        target_indicator_vals = set()
+        for vals in indicators.values():
+            target_indicator_vals.update(vals)
+        # Also check shared usernames/IPs from the alert descriptions
+        for other in other_alerts:
+            pair = frozenset([alert_id, other["alert_id"]])
+            if pair in _attempted_correlations:
+                continue
+            # Check for shared indicators
+            other_indicator_vals = set()
+            for vals in other.get("indicators", {}).values():
+                other_indicator_vals.update(vals)
+            if target_indicator_vals & other_indicator_vals:
                 _attempted_correlations.add(pair)
                 return {
                     "action_type": "correlate_alerts",
                     "alert_id_a": alert_id,
-                    "alert_id_b": other_alert["alert_id"],
+                    "alert_id_b": other["alert_id"],
                 }
+        # Try adjacent alerts even without obvious shared indicators
+        corr_attempts_for_alert = sum(
+            1 for pair in _attempted_correlations if alert_id in pair
+        )
+        if corr_attempts_for_alert < 2:
+            for other in other_alerts[:2]:
+                pair = frozenset([alert_id, other["alert_id"]])
+                if pair not in _attempted_correlations:
+                    _attempted_correlations.add(pair)
+                    return {
+                        "action_type": "correlate_alerts",
+                        "alert_id_a": alert_id,
+                        "alert_id_b": other["alert_id"],
+                    }
 
-    # Classify based on enrichment results
+    # Phase 4: Classify based on enrichment + contextual signals
     enrichment_results = inv.get("enriched_indicators", {})
     malicious_count = sum(
         1 for r in enrichment_results.values()
         if isinstance(r, dict) and r.get("malicious")
     )
+    high_threat_count = sum(
+        1 for r in enrichment_results.values()
+        if isinstance(r, dict) and r.get("threat_score", 0) >= 70
+    )
 
-    if malicious_count > 0:
+    # Check log evidence for suspicious activity
+    log_evidence_suspicious = False
+    for source_key, entries in inv.get("queried_sources", {}).items():
+        if isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict):
+                    details = entry.get("details", {})
+                    if details.get("macro_detected") or details.get("encoded"):
+                        log_evidence_suspicious = True
+                    severity = entry.get("severity", "")
+                    if severity == "critical":
+                        log_evidence_suspicious = True
+
+    # Contextual classification: use severity + source system + enrichment
+    alert_severity = target.get("severity", "").lower()
+    is_likely_tp = (
+        malicious_count > 0
+        or high_threat_count > 0
+        or log_evidence_suspicious
+        or (alert_severity == "critical" and malicious_count >= 0)
+    )
+
+    # BTP detection: benign activities that trigger rules
+    is_likely_btp = False
+    if "pentest" in title_lower or "authorized" in title_lower or "maintenance" in title_lower:
+        is_likely_btp = True
+    if "it.admin" in str(indicators) or "svc." in str(indicators):
+        # Service accounts and IT admin activity is often benign
+        if malicious_count == 0:
+            is_likely_btp = True
+
+    if is_likely_btp:
+        classification = "benign_true_positive"
+    elif is_likely_tp:
         classification = "true_positive"
-        technique = "T1566.001"  # Default phishing technique
     else:
         classification = "false_positive"
-        technique = None
 
     # Classify
     if not inv.get("classification"):
+        confidence = 0.85 if malicious_count > 0 else 0.7
         return {
             "action_type": "classify_alert",
             "alert_id": alert_id,
             "classification": classification,
-            "confidence": 0.7,
+            "confidence": confidence,
         }
 
-    # Map technique for TPs
-    if classification == "true_positive" and technique and not inv.get("mapped_techniques"):
+    # Phase 5: Map MITRE technique for TPs
+    if classification in ("true_positive", "benign_true_positive") and not inv.get("mapped_techniques"):
+        technique = _infer_technique(target)
         return {
             "action_type": "map_technique",
             "alert_id": alert_id,
             "technique_id": technique,
         }
 
-    # Recommend action for TPs
-    if classification == "true_positive" and not inv.get("recommended_actions"):
+    # Phase 6: Recommend appropriate response action for TPs
+    if classification in ("true_positive", "benign_true_positive") and not inv.get("recommended_actions"):
+        response_action = _infer_response_action(target, classification)
         return {
             "action_type": "recommend_action",
             "alert_id": alert_id,
-            "response_action": "block_ip",
+            "response_action": response_action,
         }
 
     # Submit when done or low budget
@@ -522,12 +724,12 @@ def main():
     else:
         print("[INFO] No LLM configured (set API_BASE_URL, API_KEY/HF_TOKEN, MODEL_NAME). Using heuristic agent.")
 
-    # Run all 3 tasks
-    tasks = ["phishing", "lateral_movement", "queue_management"]
+    # Run all 4 tasks
+    tasks = ["phishing", "lateral_movement", "queue_management", "insider_threat"]
     results = {}
     total_start = time.time()
 
-    with httpx.Client(base_url=SERVER_URL, timeout=60) as server_client:
+    with httpx.Client(base_url=SERVER_URL, timeout=300) as server_client:
         for task_id in tasks:
             _attempted_correlations.clear()  # reset per-task
             task_score = run_task(
@@ -552,6 +754,11 @@ def main():
     print(f"  {'AVERAGE':<25} {avg_score:.4f}")
     print(f"\nTotal runtime: {total_elapsed:.1f}s")
     print(f"{'='*60}")
+
+    # Structured summary for evaluation harness
+    model_label = MODEL_NAME or "heuristic"
+    task_scores = " ".join(f"{tid}={score:.2f}" for tid, score in results.items())
+    print(f"[SUMMARY] model={model_label} {task_scores} average={avg_score:.2f}", flush=True)
 
     # Cleanup server subprocess if we started one
     if server_process is not None:

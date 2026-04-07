@@ -1,0 +1,151 @@
+"""
+Tests for SOCEnvironment: reset, step, state, budget.
+"""
+
+import pytest
+
+from server.environment import SOCEnvironment
+from models import (
+    ActionType,
+    AlertClassification,
+    IndicatorType,
+    LogSource,
+    SOCAction,
+    SOCObservation,
+)
+
+
+class TestSOCEnvironment:
+    """Tests for the SOCEnvironment state machine."""
+
+    def test_reset_creates_episode(self, environment):
+        """reset() should create a new episode with alerts and initial observation."""
+        obs = environment.reset(task_id="phishing", seed=42)
+
+        assert isinstance(obs, SOCObservation)
+        assert obs.step == 0
+        assert obs.done is False
+        assert obs.reward == 0.0
+        assert obs.cumulative_reward == 0.0
+        assert obs.task_id == "phishing"
+        assert obs.episode_id is not None
+        assert len(obs.alert_queue) == 1  # phishing has 1 alert
+        assert obs.investigation_budget == 15  # phishing max_steps
+
+    def test_step_enrich_indicator(self, environment):
+        """Enriching a known indicator should return enrichment results and positive reward."""
+        obs = environment.reset(task_id="phishing", seed=42)
+        alert = obs.alert_queue[0]
+
+        # Get an IP indicator from the alert
+        ip_indicators = alert.indicators.get("ip", [])
+        assert len(ip_indicators) > 0, "Phishing alert should have IP indicators"
+
+        action = SOCAction(
+            action_type=ActionType.ENRICH_INDICATOR,
+            indicator=ip_indicators[0],
+            indicator_type=IndicatorType.IP,
+        )
+        obs = environment.step(action)
+
+        assert obs.step == 1
+        assert obs.done is False
+        assert len(obs.enrichment_results) == 1
+        assert obs.enrichment_results[0].indicator == ip_indicators[0]
+
+    def test_step_query_logs(self, environment):
+        """Querying a relevant log source should return log entries."""
+        obs = environment.reset(task_id="phishing", seed=42)
+        alert_id = obs.alert_queue[0].alert_id
+
+        action = SOCAction(
+            action_type=ActionType.QUERY_LOGS,
+            log_source=LogSource.EMAIL_GATEWAY,
+            query_alert_id=alert_id,
+        )
+        obs = environment.step(action)
+
+        assert obs.step == 1
+        assert len(obs.log_results) > 0, "Email gateway should have logs for phishing alert"
+
+    def test_step_classify_alert(self, environment):
+        """Classifying an alert after gathering evidence should work."""
+        obs = environment.reset(task_id="phishing", seed=42)
+        alert = obs.alert_queue[0]
+        alert_id = alert.alert_id
+
+        # First gather some evidence (enrich an indicator)
+        ip_indicators = alert.indicators.get("ip", [])
+        enrich_action = SOCAction(
+            action_type=ActionType.ENRICH_INDICATOR,
+            indicator=ip_indicators[0],
+            indicator_type=IndicatorType.IP,
+        )
+        environment.step(enrich_action)
+
+        # Now classify
+        classify_action = SOCAction(
+            action_type=ActionType.CLASSIFY_ALERT,
+            alert_id=alert_id,
+            classification=AlertClassification.TRUE_POSITIVE,
+            confidence=0.9,
+        )
+        obs = environment.step(classify_action)
+
+        assert obs.step == 2
+        # Check that the classification was recorded
+        assert obs.investigations[alert_id].classification == AlertClassification.TRUE_POSITIVE
+
+    def test_step_submit_investigation(self, environment):
+        """Submitting investigation should finalize the episode (done=True)."""
+        obs = environment.reset(task_id="phishing", seed=42)
+        alert_id = obs.alert_queue[0].alert_id
+
+        # Classify the alert first (with evidence)
+        ip_indicators = obs.alert_queue[0].indicators.get("ip", [])
+        environment.step(SOCAction(
+            action_type=ActionType.ENRICH_INDICATOR,
+            indicator=ip_indicators[0],
+            indicator_type=IndicatorType.IP,
+        ))
+        environment.step(SOCAction(
+            action_type=ActionType.CLASSIFY_ALERT,
+            alert_id=alert_id,
+            classification=AlertClassification.TRUE_POSITIVE,
+            confidence=0.9,
+        ))
+
+        # Submit
+        obs = environment.step(SOCAction(action_type=ActionType.SUBMIT_INVESTIGATION))
+
+        assert obs.done is True
+        assert "submitted" in obs.message.lower() or "grader" in obs.message.lower()
+
+    def test_budget_exhaustion(self, environment):
+        """Exhausting the step budget should auto-terminate the episode."""
+        obs = environment.reset(task_id="phishing", seed=42)
+
+        # Phishing has max_steps=15, use NOOP to burn through budget
+        for i in range(15):
+            obs = environment.step(SOCAction(action_type=ActionType.NOOP))
+
+        assert obs.done is True
+        assert "budget" in obs.message.lower() or "exhausted" in obs.message.lower()
+
+    def test_deterministic_seed(self, environment):
+        """Same seed should produce the same scenario."""
+        obs1 = environment.reset(task_id="phishing", seed=123)
+        alert1 = obs1.alert_queue[0]
+
+        # Reset with same seed
+        obs2 = environment.reset(task_id="phishing", seed=123)
+        alert2 = obs2.alert_queue[0]
+
+        assert alert1.alert_id == alert2.alert_id
+        assert alert1.title == alert2.title
+        assert alert1.indicators == alert2.indicators
+
+        # Different seed should produce different scenario
+        obs3 = environment.reset(task_id="phishing", seed=999)
+        alert3 = obs3.alert_queue[0]
+        assert alert3.alert_id != alert1.alert_id

@@ -58,7 +58,7 @@ class SOCEnvironment:
         Start a new episode for the given task.
 
         Args:
-            task_id: One of "phishing", "lateral_movement", "queue_management".
+            task_id: One of "phishing", "lateral_movement", "queue_management", "insider_threat".
             seed: RNG seed for deterministic scenario generation.
 
         Returns:

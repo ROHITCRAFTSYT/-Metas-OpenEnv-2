@@ -61,6 +61,17 @@ tasks:
     max_steps: 60
     reward_range: [0.0, 1.0]
 
+  - id: insider_threat
+    name: "Insider Threat Investigation"
+    description: >
+      Investigate 30 alerts hiding 3 insider threat attack chains:
+      unauthorized data theft, compromised vendor account, and a
+      disgruntled employee. 9 true positives, 5 benign true positives,
+      16 false positives. Expert-level SOC triage under heavy noise.
+    difficulty: expert
+    max_steps: 80
+    reward_range: [0.0, 1.0]
+
 reward:
   range: [0.0, 1.0]
   dense: true
