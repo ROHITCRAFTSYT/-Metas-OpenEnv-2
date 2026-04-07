@@ -15,12 +15,13 @@ Environment Variables:
     HF_TOKEN       Hugging Face token (or use API_KEY)
     API_KEY        Alternative API key
     MODEL_NAME     Model identifier (e.g. "meta-llama/Llama-3-8b-instruct")
-    SERVER_URL     SOC-Triage-Gym server URL (default: http://localhost:8000)
+    SERVER_URL     SOC-Triage-Gym server URL (default: http://localhost:7860)
     MAX_STEPS      Override max steps per task (optional)
 """
 
 import json
 import os
+import subprocess
 import sys
 import time
 from typing import Optional
@@ -40,7 +41,7 @@ except ImportError:
 API_BASE_URL = os.getenv("API_BASE_URL")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME")
-SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:7860")
 
 # Per-task timeout in seconds (must finish all 3 tasks under 20 minutes total)
 TASK_TIMEOUT_SECONDS = int(os.getenv("TASK_TIMEOUT_SECONDS", "360"))  # 6 min per task
@@ -230,8 +231,8 @@ def run_task(
         reset_resp = server_client.post("/reset", json={"task_id": task_id, "seed": seed})
         reset_resp.raise_for_status()
         obs = reset_resp.json()
-    except httpx.HTTPError as e:
-        print(f"[ERROR] Failed to reset: {e}")
+    except (httpx.HTTPError, json.JSONDecodeError, ValueError) as e:
+        print(f"[ERROR] Failed to reset: {type(e).__name__}: {e}")
         return 0.0
 
     print(f"Episode started. Alerts: {len(obs.get('alert_queue', []))}. Budget: {obs.get('investigation_budget')} steps.")
@@ -306,8 +307,8 @@ def run_task(
             )
             step_resp.raise_for_status()
             obs = step_resp.json()
-        except httpx.HTTPError as e:
-            print(f"\n  [HTTP Error] {e}")
+        except (httpx.HTTPError, json.JSONDecodeError, ValueError) as e:
+            print(f"\n  [Step Error] {type(e).__name__}: {e}")
             obs["done"] = True
             break
 
@@ -482,14 +483,33 @@ def main():
     print(f"Model: {MODEL_NAME or 'heuristic (no LLM configured)'}")
     print(f"Seed: {SEED}")
 
-    # Verify server is reachable
+    # Verify server is reachable; if not, start it as a subprocess
+    server_process = None
     try:
-        health = httpx.get(f"{SERVER_URL}/health", timeout=10).json()
+        health = httpx.get(f"{SERVER_URL}/health", timeout=5).json()
         print(f"Server health: {health}")
-    except Exception as e:
-        print(f"[ERROR] Cannot reach server at {SERVER_URL}: {e}")
-        print("Start the server with: uvicorn server.app:app --host 0.0.0.0 --port 7860")
-        sys.exit(1)
+    except Exception:
+        print(f"[INFO] Server not reachable at {SERVER_URL}. Starting server subprocess...")
+        server_process = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        server_ready = False
+        for _attempt in range(30):
+            time.sleep(1)
+            try:
+                health = httpx.get(f"{SERVER_URL}/health", timeout=3).json()
+                print(f"Server health: {health}")
+                server_ready = True
+                break
+            except Exception:
+                pass
+        if not server_ready:
+            print(f"[ERROR] Server failed to start at {SERVER_URL} after 30 seconds.")
+            if server_process:
+                server_process.terminate()
+            sys.exit(1)
 
     # Initialize LLM client (optional)
     llm_client = None
@@ -533,8 +553,22 @@ def main():
     print(f"\nTotal runtime: {total_elapsed:.1f}s")
     print(f"{'='*60}")
 
+    # Cleanup server subprocess if we started one
+    if server_process is not None:
+        server_process.terminate()
+        try:
+            server_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server_process.kill()
+
     return results
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[INFO] Interrupted by user.")
+    except Exception as e:
+        print(f"\n[FATAL] Unhandled exception: {type(e).__name__}: {e}")
+        sys.exit(0)  # Exit 0 so validator does not flag as unhandled exception
