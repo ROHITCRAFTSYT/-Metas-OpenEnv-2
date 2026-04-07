@@ -409,8 +409,8 @@ An LLM-based agent using the provided system prompt is expected to score:
 | Task | Expected Score |
 |---|---|
 | Phishing (Easy) | 0.65–0.85 |
-| Lateral Movement (Medium) | 0.50–0.70 |
-| Queue Management (Hard) | 0.40–0.60 |
+| Lateral Movement (Medium) | 0.50–0.70  |
+| Queue Management (Hard) | 0.40–0.60  |
 
 ---
 
