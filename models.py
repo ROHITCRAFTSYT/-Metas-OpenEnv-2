@@ -385,6 +385,9 @@ class SOCObservation(BaseModel):
     task_id: Optional[str] = Field(None, description="Active task ID")
     episode_id: Optional[str] = Field(None, description="Unique episode identifier")
 
+    # Final normalized task score (0,1) — populated after submit_investigation
+    task_score: Optional[float] = Field(None, description="Normalized grader score in (0,1) after episode ends")
+
 
 # ---------------------------------------------------------------------------
 # Reward Model

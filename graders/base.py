@@ -204,5 +204,5 @@ class BaseGrader(ABC):
         return 0.3
 
     def _clamp(self, value: float) -> float:
-        """Clamp a score to [0.0, 1.0]."""
-        return max(0.0, min(1.0, value))
+        """Clamp a score to strictly (0.0, 1.0) — exclusive, as required by OpenEnv validator."""
+        return max(0.001, min(0.999, value))
