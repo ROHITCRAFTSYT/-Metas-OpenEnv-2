@@ -1,22 +1,18 @@
 """
 SOC-Triage-Gym Baseline Inference Script
 =========================================
-MANDATORY
-- Before submitting, ensure the following variables are defined:
-    API_BASE_URL   The API endpoint for the LLM.
-    MODEL_NAME     The model identifier to use for inference.
-    HF_TOKEN       Your Hugging Face / API key.
+MANDATORY environment variables:
+    API_BASE_URL   The API endpoint for the LLM (default: https://api.openai.com/v1)
+    MODEL_NAME     The model identifier to use (default: meta-llama/Llama-3-8b-instruct)
+    HF_TOKEN       Your Hugging Face / API key (no default)
+
+Optional:
+    LOCAL_IMAGE_NAME  When using from_docker_image()
+    SERVER_URL        SOC-Triage-Gym server URL (default: http://localhost:7860)
 
 - This script must be named `inference.py` and placed in the root directory
-- Uses OpenAI Client for all LLM calls
-
-Environment Variables:
-    API_BASE_URL   OpenAI-compatible LLM endpoint
-    HF_TOKEN       Hugging Face token (or use API_KEY)
-    API_KEY        Alternative API key
-    MODEL_NAME     Model identifier (e.g. "meta-llama/Llama-3-8b-instruct")
-    SERVER_URL     SOC-Triage-Gym server URL (default: http://localhost:7860)
-    MAX_STEPS      Override max steps per task (optional)
+- All LLM calls use the OpenAI client configured via these variables:
+    from openai import OpenAI
 """
 
 import json
@@ -38,10 +34,16 @@ except ImportError:
 # Configuration (mandatory variable names per OpenEnv spec)
 # ---------------------------------------------------------------------------
 
-API_BASE_URL = os.getenv("API_BASE_URL")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-8b-instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:7860")
+
+# Optional — if you use from_docker_image():
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
+# Resolve API key: HF_TOKEN takes priority
+API_KEY = HF_TOKEN or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY")
 
 # Per-task timeout in seconds (must finish all 3 tasks under 20 minutes total)
 TASK_TIMEOUT_SECONDS = int(os.getenv("TASK_TIMEOUT_SECONDS", "360"))  # 6 min per task
@@ -713,16 +715,16 @@ def main():
                 server_process.terminate()
             sys.exit(1)
 
-    # Initialize LLM client (optional)
+    # Initialize LLM client via OpenAI SDK (configured with API_BASE_URL, API_KEY, MODEL_NAME)
     llm_client = None
-    if API_BASE_URL and API_KEY and MODEL_NAME and OpenAI is not None:
+    if API_KEY and OpenAI is not None:
         try:
             llm_client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-            print(f"LLM client initialized: {API_BASE_URL}")
+            print(f"LLM client initialized: {API_BASE_URL} model={MODEL_NAME}")
         except Exception as e:
             print(f"[WARNING] Failed to initialize LLM client: {e}. Using heuristic agent.")
     else:
-        print("[INFO] No LLM configured (set API_BASE_URL, API_KEY/HF_TOKEN, MODEL_NAME). Using heuristic agent.")
+        print("[INFO] No HF_TOKEN/API_KEY set. Using heuristic agent.")
 
     # Run all 4 tasks
     tasks = ["phishing", "lateral_movement", "queue_management", "insider_threat"]
