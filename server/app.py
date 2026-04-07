@@ -31,7 +31,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-from models import EnvironmentState, SOCAction, SOCObservation
+from models import AlertClassification, EnvironmentState, SOCAction, SOCObservation
 from server.ui import UI_HTML
 from server.environment import SOCEnvironment
 
@@ -109,7 +109,7 @@ def metadata():
             "indicators, querying log sources, correlating events, and classifying alerts "
             "with MITRE ATT&CK technique mapping."
         ),
-        "tasks": ["phishing", "lateral_movement", "queue_management"],
+        "tasks": ["phishing", "lateral_movement", "queue_management", "insider_threat"],
         "author": "rohitcraftsyt",
         "tags": ["openenv", "cybersecurity", "soc", "siem", "mitre-attack", "reinforcement-learning"],
     }
@@ -128,28 +128,219 @@ def schema():
 
 @app.post("/mcp")
 def mcp_endpoint(request: Optional[dict] = Body(default=None)):
-    """MCP JSON-RPC stub (OpenEnv runtime spec)."""
+    """
+    MCP (Model Context Protocol) JSON-RPC 2.0 endpoint.
+
+    Supports:
+      - tools/list  — enumerate all available tools with JSON Schema inputs
+      - tools/call  — execute a tool by name with params
+    """
     req = request or {}
     method = req.get("method", "")
     req_id = req.get("id", 1)
-    # Return a minimal valid JSON-RPC 2.0 response
-    if method == "tools/list":
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "tools": [
-                    {"name": "reset", "description": "Start a new episode"},
-                    {"name": "step", "description": "Execute an action"},
-                    {"name": "state", "description": "Get current episode state"},
-                ]
+    params = req.get("params", {})
+
+    def _jsonrpc_ok(result):
+        return {"jsonrpc": "2.0", "id": req_id, "result": result}
+
+    def _jsonrpc_err(code, message, data=None):
+        err = {"code": code, "message": message}
+        if data is not None:
+            err["data"] = data
+        return {"jsonrpc": "2.0", "id": req_id, "error": err}
+
+    # -- MCP tool definitions -------------------------------------------------
+    MCP_TOOLS = [
+        {
+            "name": "reset",
+            "description": "Start a new episode. Returns initial observation with full alert queue.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "enum": ["phishing", "lateral_movement", "queue_management", "insider_threat"], "default": "phishing"},
+                    "seed": {"type": "integer", "default": 42},
+                },
             },
-        }
-    return {
-        "jsonrpc": "2.0",
-        "id": req_id,
-        "result": {"status": "ok", "env": "soc-triage-gym"},
-    }
+        },
+        {
+            "name": "step",
+            "description": "Execute a single action in the current episode. Wraps POST /step.",
+            "inputSchema": SOCAction.model_json_schema(),
+        },
+        {
+            "name": "state",
+            "description": "Get current episode metadata (step count, reward, done flag, etc.) without consuming a step.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "enrich_indicator",
+            "description": "Enrich a threat indicator (IP, domain, hash, email, URL) via threat intelligence feeds.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "indicator": {"type": "string", "description": "Indicator value (e.g. IP address, domain)"},
+                    "indicator_type": {"type": "string", "enum": ["ip", "domain", "file_hash", "email", "url", "user"]},
+                    "query_alert_id": {"type": "string", "description": "Alert ID this enrichment is for (optional)"},
+                },
+                "required": ["indicator", "indicator_type"],
+            },
+        },
+        {
+            "name": "query_logs",
+            "description": "Query a SIEM log source for events related to an alert.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "log_source": {"type": "string", "enum": ["firewall", "proxy", "dns", "endpoint", "auth", "email_gateway", "ids", "cloud_trail"]},
+                    "query_alert_id": {"type": "string", "description": "Alert ID to scope the query"},
+                    "time_window_hours": {"type": "integer", "default": 24, "minimum": 1, "maximum": 168},
+                },
+                "required": ["log_source"],
+            },
+        },
+        {
+            "name": "correlate_alerts",
+            "description": "Check two alerts for shared indicators, IPs, users, techniques, or time-window overlap.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "alert_id_a": {"type": "string"},
+                    "alert_id_b": {"type": "string"},
+                },
+                "required": ["alert_id_a", "alert_id_b"],
+            },
+        },
+        {
+            "name": "classify_alert",
+            "description": "Classify an alert as true_positive, false_positive, or benign_true_positive.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "alert_id": {"type": "string"},
+                    "classification": {"type": "string", "enum": ["true_positive", "false_positive", "benign_true_positive"]},
+                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.8},
+                },
+                "required": ["alert_id", "classification"],
+            },
+        },
+        {
+            "name": "map_technique",
+            "description": "Map a MITRE ATT&CK technique ID to an alert (e.g. T1566.001).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "alert_id": {"type": "string"},
+                    "technique_id": {"type": "string", "description": "MITRE ATT&CK ID, e.g. T1566.001"},
+                },
+                "required": ["alert_id", "technique_id"],
+            },
+        },
+        {
+            "name": "recommend_action",
+            "description": "Recommend a containment or response action for an alert.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "alert_id": {"type": "string"},
+                    "response_action": {"type": "string", "enum": ["isolate_endpoint", "disable_account", "block_ip", "block_domain", "quarantine_file", "reset_password", "revoke_sessions", "no_action"]},
+                },
+                "required": ["alert_id", "response_action"],
+            },
+        },
+        {
+            "name": "check_asset",
+            "description": "Look up a host in the asset inventory by hostname.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "hostname": {"type": "string"},
+                },
+                "required": ["hostname"],
+            },
+        },
+        {
+            "name": "check_user",
+            "description": "Look up a user profile in directory services.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string"},
+                },
+                "required": ["username"],
+            },
+        },
+        {
+            "name": "submit_investigation",
+            "description": "Submit the investigation for grading. Ends the episode and returns the final score.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+    ]
+
+    # -- tools/list -----------------------------------------------------------
+    if method == "tools/list":
+        return _jsonrpc_ok({"tools": MCP_TOOLS})
+
+    # -- tools/call -----------------------------------------------------------
+    if method == "tools/call":
+        tool_name = params.get("name", "")
+        tool_args = params.get("arguments", {})
+
+        try:
+            if tool_name == "reset":
+                with _env_lock:
+                    obs = _env.reset(
+                        task_id=tool_args.get("task_id", "phishing"),
+                        seed=tool_args.get("seed", 42),
+                    )
+                    return _jsonrpc_ok({"content": [{"type": "text", "text": obs.model_dump_json()}]})
+
+            if tool_name == "state":
+                with _env_lock:
+                    st = _env.state()
+                    return _jsonrpc_ok({"content": [{"type": "text", "text": st.model_dump_json()}]})
+
+            if tool_name == "submit_investigation":
+                with _env_lock:
+                    if _env._config is None:
+                        return _jsonrpc_err(-32602, "No active episode. Call reset first.")
+                    obs = _env.step(SOCAction(action_type="submit_investigation"))
+                    return _jsonrpc_ok({"content": [{"type": "text", "text": obs.model_dump_json()}]})
+
+            # Tools that map directly to a step action
+            ACTION_MAP = {
+                "step": None,  # pass-through
+                "enrich_indicator": "enrich_indicator",
+                "query_logs": "query_logs",
+                "correlate_alerts": "correlate_alerts",
+                "classify_alert": "classify_alert",
+                "map_technique": "map_technique",
+                "recommend_action": "recommend_action",
+                "check_asset": "check_asset",
+                "check_user": "check_user",
+            }
+
+            if tool_name in ACTION_MAP:
+                with _env_lock:
+                    if _env._config is None:
+                        return _jsonrpc_err(-32602, "No active episode. Call reset first.")
+                    if tool_name == "step":
+                        action_data = tool_args
+                    else:
+                        action_data = {"action_type": ACTION_MAP[tool_name], **tool_args}
+                    action = SOCAction(**action_data)
+                    obs = _env.step(action)
+                    return _jsonrpc_ok({"content": [{"type": "text", "text": obs.model_dump_json()}]})
+
+            return _jsonrpc_err(-32601, f"Unknown tool: '{tool_name}'")
+
+        except ValueError as e:
+            return _jsonrpc_err(-32602, f"Invalid params: {e}")
+        except Exception as e:
+            logger.exception("MCP tools/call error")
+            return _jsonrpc_err(-32603, f"Internal error: {e}")
+
+    # -- unknown method -------------------------------------------------------
+    return _jsonrpc_err(-32601, f"Unknown method: '{method}'")
 
 
 @app.post("/reset", response_model=SOCObservation)
@@ -158,7 +349,7 @@ def reset(request: Optional[ResetRequest] = Body(default=None)):
     Start a new episode.
 
     Args:
-        task_id: "phishing" | "lateral_movement" | "queue_management" (default: "phishing")
+        task_id: "phishing" | "lateral_movement" | "queue_management" | "insider_threat" (default: "phishing")
         seed: RNG seed for deterministic scenario generation (default: 42)
 
     Returns:
@@ -230,7 +421,7 @@ def root():
         "name": "soc-triage-gym",
         "version": "0.1.0",
         "description": "SOC Triage RL Environment — OpenEnv compliant",
-        "tasks": ["phishing", "lateral_movement", "queue_management"],
+        "tasks": ["phishing", "lateral_movement", "queue_management", "insider_threat"],
         "endpoints": {
             "reset": "POST /reset",
             "step": "POST /step",
@@ -281,6 +472,14 @@ def get_tasks():
                 "description": "Triage 20 mixed alerts: 5 true positives in 2 attack chains, 3 benign true positives, 12 false positives.",
                 "difficulty": "hard",
                 "max_steps": 60,
+                "reward_range": [0.0, 1.0],
+            },
+            {
+                "id": "insider_threat",
+                "name": "Insider Threat Investigation",
+                "description": "Investigate 30 alerts hiding 3 insider threat attack chains: unauthorized data theft, compromised vendor, disgruntled employee. 9 TPs, 5 BTPs, 16 FPs.",
+                "difficulty": "expert",
+                "max_steps": 80,
                 "reward_range": [0.0, 1.0],
             },
         ]
@@ -360,8 +559,7 @@ def _heuristic_baseline_action(env: "SOCEnvironment") -> SOCAction:
         aid = alert.alert_id
         inv = investigations.get(aid)
         if inv and inv.classification is None:
-            gt = config.ground_truth.get(aid)
-            cls = gt.classification if gt else "false_positive"
+            cls = config.ground_truth.alert_classifications.get(aid, AlertClassification.FALSE_POSITIVE)
             return SOCAction(
                 action_type="classify_alert",
                 alert_id=aid,
@@ -406,6 +604,16 @@ def get_task(task_id: str):
             "num_alerts": 20,
             "grader_weights": {"f1_score": 0.3, "attack_chains": 0.2, "tp_coverage": 0.2, "efficiency": 0.15, "response": 0.15},
         },
+        "insider_threat": {
+            "id": "insider_threat",
+            "name": "Insider Threat Investigation",
+            "description": "Investigate 30 alerts hiding 3 insider threat attack chains: unauthorized data theft, compromised vendor, disgruntled employee. 9 TPs, 5 BTPs, 16 FPs.",
+            "difficulty": "expert",
+            "max_steps": 80,
+            "reward_range": [0.0, 1.0],
+            "num_alerts": 30,
+            "grader_weights": {"f1_score": 0.25, "attack_chains": 0.25, "tp_coverage": 0.20, "efficiency": 0.15, "response": 0.15},
+        },
     }
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found. Valid: {list(tasks.keys())}")
@@ -437,6 +645,13 @@ def list_tasks():
                 "difficulty": "hard",
                 "max_steps": 60,
                 "num_alerts": 20,
+            },
+            {
+                "id": "insider_threat",
+                "description": "Investigate 30 alerts with 3 insider threat chains hidden in heavy SOC noise.",
+                "difficulty": "expert",
+                "max_steps": 80,
+                "num_alerts": 30,
             },
         ]
     }

@@ -98,7 +98,7 @@ class LateralMovementGrader(BaseGrader):
         found a CorrelatedEvent linking those two alerts.
         """
         if len(kill_chain_order) < 2:
-            return 1.0
+            return 0.0
 
         # Collect all correlated pairs found by agent
         found_pairs: set = set()

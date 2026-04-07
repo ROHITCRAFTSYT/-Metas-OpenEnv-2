@@ -250,35 +250,66 @@ Agent must prioritize investigation, efficiently dismiss FPs, and surface hidden
 
 **Baseline score** (heuristic agent): ~0.25–0.40
 
+### Task 4: Insider Threat Investigation (Expert)
+**Max steps**: 80 | **Typical completion**: 50–75 steps
+
+30 alerts in shuffled order hiding 3 insider threat attack chains:
+- **Chain A (Data Theft)**: Unauthorized DB access → Data export → Cloud upload (3 alerts)
+- **Chain B (Vendor Compromise)**: VPN anomaly → Service account abuse → Config changes (3 alerts)
+- **Chain C (Disgruntled Employee)**: After-hours access → Mass file deletion → USB exfiltration (3 alerts)
+- **5 Benign True Positives**: IT maintenance, penetration test, backup jobs, security scanning, policy audits
+- **16 False Positives**: DNS noise, scanner alerts, CDN anomalies, geoblocking, automated reports
+
+Agent must handle the highest noise-to-signal ratio across all tasks.
+
+**Grader weights**:
+- F1 score on classifications: 25%
+- Attack chain identification (3 chains): 25%
+- Missed TP penalty: 20%
+- Efficiency (steps vs. budget): 15%
+- Response quality: 15%
+
+**Baseline score** (heuristic agent): ~0.20–0.35
+
 ---
 
 ## Architecture
 
 ```
 soc-triage-gym/
-├── inference.py              # Baseline LLM agent script
+├── inference.py              # Baseline LLM agent script (auto-starts server)
+├── benchmark.py              # Multi-seed reproducibility proof script
 ├── models.py                 # All Pydantic v2 models (Action, Observation, etc.)
 ├── client.py                 # HTTP client wrapper
 ├── openenv.yaml              # OpenEnv manifest
 ├── pyproject.toml            # Package configuration
-├── Dockerfile                # Container definition
+├── Dockerfile                # Container definition (with HEALTHCHECK)
 │
 ├── server/
-│   ├── app.py                # FastAPI application (POST /reset, /step, GET /state, /health)
+│   ├── app.py                # FastAPI app (REST + MCP JSON-RPC 2.0 endpoints)
 │   ├── environment.py        # SOCEnvironment state machine
+│   ├── ui.py                 # Interactive web dashboard
 │   └── requirements.txt      # Server dependencies
 │
 ├── scenarios/
 │   ├── base.py               # BaseScenario with seeded RNG + data generators
 │   ├── phishing.py           # Task 1: single alert (TP/FP variants)
 │   ├── lateral_movement.py   # Task 2: 5-alert kill chain
-│   └── queue_management.py   # Task 3: 20-alert mixed queue
+│   ├── queue_management.py   # Task 3: 20-alert mixed queue
+│   └── insider_threat.py     # Task 4: 30-alert insider threat (expert)
 │
 ├── graders/
 │   ├── base.py               # BaseGrader interface + shared helpers
 │   ├── phishing_grader.py    # Task 1 grader (0.0-1.0)
 │   ├── lateral_movement_grader.py  # Task 2 grader
-│   └── queue_management_grader.py  # Task 3 grader
+│   ├── queue_management_grader.py  # Task 3 grader
+│   └── insider_threat_grader.py    # Task 4 grader
+│
+├── tests/                    # Comprehensive pytest test suite (38 tests)
+│   ├── test_graders.py       # Grader accuracy tests
+│   ├── test_environment.py   # Environment state machine tests
+│   ├── test_scenarios.py     # Scenario generation + determinism tests
+│   └── test_server.py        # FastAPI endpoint tests
 │
 ├── tools/                    # Simulated SOC tool implementations
 │   ├── enrichment.py         # Threat intel lookup

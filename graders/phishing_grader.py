@@ -160,10 +160,24 @@ class PhishingGrader(BaseGrader):
             evidence_score = len(queried & expected_sources) / len(expected_sources)
 
         expected_actions = gt.expected_response_actions.get(alert_id, [])
-        if not expected_actions or expected_class == AlertClassification.FALSE_POSITIVE:
+        if not expected_actions and expected_class != AlertClassification.FALSE_POSITIVE:
             response_score = 1.0
         elif inv is None:
             response_score = 0.0
+        elif expected_class == AlertClassification.FALSE_POSITIVE:
+            from models import ResponseActionType
+            recommended = set(inv.recommended_actions)
+            aggressive = {
+                ResponseActionType.ISOLATE_ENDPOINT,
+                ResponseActionType.BLOCK_IP,
+                ResponseActionType.DISABLE_ACCOUNT,
+            }
+            if not recommended or ResponseActionType.NO_ACTION in recommended:
+                response_score = 1.0
+            elif recommended & aggressive:
+                response_score = 0.0
+            else:
+                response_score = 0.5
         else:
             recommended = set(inv.recommended_actions)
             expected = set(expected_actions)
