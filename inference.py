@@ -482,23 +482,64 @@ def _heuristic_action(obs: dict, step: int) -> dict:
     """
     VALID_INDICATOR_TYPES = {"ip", "domain", "file_hash", "email", "url", "user"}
 
+    # BTP keyword patterns — activities that are suspicious-looking but authorized
+    BTP_TITLE_KEYWORDS = {
+        "pentest", "red team", "red-team", "authorized", "maintenance",
+        "scheduled backup", "backup job", "nightly backup", "vulnerability scan",
+        "vuln scan", "gpo update", "group policy", "key rotation", "ssh key",
+        "patch", "planned", "approved", "simulated", "exercise",
+    }
+    # FP-indicating patterns — scanner noise, geo-blocks, etc.
+    FP_TITLE_KEYWORDS = {
+        "geo-block", "geoblock", "cdn anomaly", "false alarm", "scanner noise",
+        "dns false", "av heuristic", "service account lockout", "login page scan",
+        "automated scan", "rate limit", "honeypot",
+    }
+
     alerts = obs.get("alert_queue", [])
     investigations = obs.get("investigations", {})
     budget = obs.get("investigation_budget", 0)
 
-    # Build alert lookup
-    alert_by_id = {a["alert_id"]: a for a in alerts}
-
-    # Find unclassified alerts
+    # Find unclassified and fully-processed alerts
     unclassified_alerts = [
         a for a in alerts
         if investigations.get(a["alert_id"], {}).get("classification") is None
     ]
 
-    if not unclassified_alerts:
+    # Check if any classified TPs still need technique/response actions
+    needs_followup = []
+    for a in alerts:
+        aid = a["alert_id"]
+        inv_a = investigations.get(aid, {})
+        stored_cls = inv_a.get("classification")
+        if stored_cls in ("true_positive", "benign_true_positive"):
+            if not inv_a.get("mapped_techniques"):
+                needs_followup.append(("technique", a, inv_a))
+            elif not inv_a.get("recommended_actions"):
+                needs_followup.append(("response", a, inv_a))
+
+    # If no unclassified AND no followup needed → submit
+    if not unclassified_alerts and not needs_followup:
         return {"action_type": "submit_investigation"}
 
-    # Prioritize high-severity alerts first
+    # Handle followup first (technique/response for already-classified TPs)
+    if needs_followup:
+        action_type, followup_alert, followup_inv = needs_followup[0]
+        if action_type == "technique":
+            return {
+                "action_type": "map_technique",
+                "alert_id": followup_alert["alert_id"],
+                "technique_id": _infer_technique(followup_alert),
+            }
+        else:
+            stored_cls = followup_inv.get("classification")
+            return {
+                "action_type": "recommend_action",
+                "alert_id": followup_alert["alert_id"],
+                "response_action": _infer_response_action(followup_alert, stored_cls),
+            }
+
+    # Prioritize high-severity unclassified alerts first
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     unclassified_alerts.sort(
         key=lambda a: severity_order.get(a.get("severity", "info"), 4)
@@ -511,6 +552,8 @@ def _heuristic_action(obs: dict, step: int) -> dict:
     indicators = target.get("indicators", {})
     queried = set(inv.get("queried_sources", {}).keys())
     enriched = set(inv.get("enriched_indicators", {}).keys())
+    title_lower = target.get("title", "").lower()
+    source_lower = target.get("source_system", "").lower()
 
     # Phase 1: Enrich IOCs (only valid indicator types, max 2 per type)
     for itype, values in indicators.items():
@@ -526,10 +569,6 @@ def _heuristic_action(obs: dict, step: int) -> dict:
                 }
 
     # Phase 2: Query relevant log sources based on alert context
-    title_lower = target.get("title", "").lower()
-    source_lower = target.get("source_system", "").lower()
-
-    # Choose log sources based on alert type for better evidence scores
     if "email" in title_lower or "phish" in title_lower:
         smart_sources = ["email_gateway", "endpoint", "dns", "firewall"]
     elif "endpoint" in source_lower or "edr" in source_lower or "credential" in title_lower:
@@ -540,12 +579,16 @@ def _heuristic_action(obs: dict, step: int) -> dict:
         smart_sources = ["auth", "endpoint", "firewall", "ids"]
     elif "dlp" in source_lower or "file" in title_lower or "stag" in title_lower:
         smart_sources = ["endpoint", "auth", "firewall", "proxy"]
+    elif "vpn" in title_lower or "insider" in title_lower or "badge" in title_lower:
+        smart_sources = ["auth", "endpoint", "firewall", "proxy"]
+    elif "cloud" in title_lower or "s3" in title_lower or "upload" in title_lower:
+        smart_sources = ["cloud_trail", "endpoint", "proxy", "firewall"]
     else:
         smart_sources = ["endpoint", "auth", "firewall", "email_gateway"]
 
     # Budget-aware log query limit
     steps_per_alert = max(1, budget // max(1, len(unclassified_alerts)))
-    max_log_queries = min(len(smart_sources), 2 if steps_per_alert <= 4 else 4)
+    max_log_queries = min(len(smart_sources), 2 if steps_per_alert <= 3 else 4)
 
     for source in smart_sources[:max_log_queries]:
         if source not in queried:
@@ -557,43 +600,46 @@ def _heuristic_action(obs: dict, step: int) -> dict:
             }
 
     # Phase 3: Correlate with other alerts (crucial for kill chain reconstruction)
+    # Always attempt correlations — they directly improve chain_reconstruction_score
     global _attempted_correlations
-    if steps_per_alert > 3:
-        other_alerts = [a for a in alerts if a["alert_id"] != alert_id]
-        # Prioritize correlating alerts that share indicators
-        target_indicator_vals = set()
-        for vals in indicators.values():
+    other_alerts = [a for a in alerts if a["alert_id"] != alert_id]
+
+    # Build target indicator set for shared-indicator detection
+    target_indicator_vals = set()
+    for vals in indicators.values():
+        if isinstance(vals, list):
             target_indicator_vals.update(vals)
-        # Also check shared usernames/IPs from the alert descriptions
-        for other in other_alerts:
-            pair = frozenset([alert_id, other["alert_id"]])
-            if pair in _attempted_correlations:
-                continue
-            # Check for shared indicators
-            other_indicator_vals = set()
-            for vals in other.get("indicators", {}).values():
+
+    # First pass: correlate alerts with SHARED indicators (highest value)
+    for other in other_alerts:
+        pair = frozenset([alert_id, other["alert_id"]])
+        if pair in _attempted_correlations:
+            continue
+        other_indicator_vals = set()
+        for vals in other.get("indicators", {}).values():
+            if isinstance(vals, list):
                 other_indicator_vals.update(vals)
-            if target_indicator_vals & other_indicator_vals:
+        if target_indicator_vals & other_indicator_vals:
+            _attempted_correlations.add(pair)
+            return {
+                "action_type": "correlate_alerts",
+                "alert_id_a": alert_id,
+                "alert_id_b": other["alert_id"],
+            }
+
+    # Second pass: correlate with ALL adjacent alerts (covers kill chains without shared IOCs)
+    corr_attempts_for_alert = sum(1 for pair in _attempted_correlations if alert_id in pair)
+    max_corr = min(len(other_alerts), 3 if steps_per_alert <= 3 else len(other_alerts))
+    if corr_attempts_for_alert < max_corr:
+        for other in other_alerts[:max_corr]:
+            pair = frozenset([alert_id, other["alert_id"]])
+            if pair not in _attempted_correlations:
                 _attempted_correlations.add(pair)
                 return {
                     "action_type": "correlate_alerts",
                     "alert_id_a": alert_id,
                     "alert_id_b": other["alert_id"],
                 }
-        # Try adjacent alerts even without obvious shared indicators
-        corr_attempts_for_alert = sum(
-            1 for pair in _attempted_correlations if alert_id in pair
-        )
-        if corr_attempts_for_alert < 2:
-            for other in other_alerts[:2]:
-                pair = frozenset([alert_id, other["alert_id"]])
-                if pair not in _attempted_correlations:
-                    _attempted_correlations.add(pair)
-                    return {
-                        "action_type": "correlate_alerts",
-                        "alert_id_a": alert_id,
-                        "alert_id_b": other["alert_id"],
-                    }
 
     # Phase 4: Classify based on enrichment + contextual signals
     enrichment_results = inv.get("enriched_indicators", {})
@@ -608,6 +654,7 @@ def _heuristic_action(obs: dict, step: int) -> dict:
 
     # Check log evidence for suspicious activity
     log_evidence_suspicious = False
+    log_evidence_benign = False
     for source_key, entries in inv.get("queried_sources", {}).items():
         if isinstance(entries, list):
             for entry in entries:
@@ -615,38 +662,54 @@ def _heuristic_action(obs: dict, step: int) -> dict:
                     details = entry.get("details", {})
                     if details.get("macro_detected") or details.get("encoded"):
                         log_evidence_suspicious = True
+                    if details.get("authorized") or details.get("scheduled"):
+                        log_evidence_benign = True
                     severity = entry.get("severity", "")
                     if severity == "critical":
                         log_evidence_suspicious = True
 
-    # Contextual classification: use severity + source system + enrichment
     alert_severity = target.get("severity", "").lower()
+
+    # BTP detection: known-benign or authorized activity patterns
+    is_likely_btp = False
+    if any(kw in title_lower for kw in BTP_TITLE_KEYWORDS):
+        is_likely_btp = True
+    if log_evidence_benign and malicious_count == 0:
+        is_likely_btp = True
+    # Service/IT accounts doing routine work
+    indicators_str = str(indicators).lower()
+    if any(p in indicators_str for p in ["it.admin", "svc.", "service_account", "backup", "scanner"]):
+        if malicious_count == 0 and not log_evidence_suspicious:
+            is_likely_btp = True
+
+    # FP detection: scanner noise, geo-blocks, automated events
+    is_likely_fp = False
+    if any(kw in title_lower for kw in FP_TITLE_KEYWORDS):
+        is_likely_fp = True
+    if alert_severity in ("low", "info") and malicious_count == 0 and not log_evidence_suspicious:
+        is_likely_fp = True
+
+    # TP detection: malicious evidence, high-threat IOCs, or high/critical with no benign explanation
     is_likely_tp = (
         malicious_count > 0
         or high_threat_count > 0
         or log_evidence_suspicious
-        or (alert_severity == "critical" and malicious_count >= 0)
+        or (alert_severity in ("critical", "high") and not is_likely_fp and not is_likely_btp)
     )
 
-    # BTP detection: benign activities that trigger rules
-    is_likely_btp = False
-    if "pentest" in title_lower or "authorized" in title_lower or "maintenance" in title_lower:
-        is_likely_btp = True
-    if "it.admin" in str(indicators) or "svc." in str(indicators):
-        # Service accounts and IT admin activity is often benign
-        if malicious_count == 0:
-            is_likely_btp = True
-
+    # Resolve classification precedence: BTP > FP > TP > FP
     if is_likely_btp:
         classification = "benign_true_positive"
+    elif is_likely_fp:
+        classification = "false_positive"
     elif is_likely_tp:
         classification = "true_positive"
     else:
-        classification = "false_positive"
+        classification = "false_positive"  # default to FP if no strong TP signal
 
     # Classify
     if not inv.get("classification"):
-        confidence = 0.85 if malicious_count > 0 else 0.7
+        confidence = 0.9 if malicious_count > 0 else (0.8 if high_threat_count > 0 else 0.7)
         return {
             "action_type": "classify_alert",
             "alert_id": alert_id,
@@ -654,8 +717,11 @@ def _heuristic_action(obs: dict, step: int) -> dict:
             "confidence": confidence,
         }
 
-    # Phase 5: Map MITRE technique for TPs
-    if classification in ("true_positive", "benign_true_positive") and not inv.get("mapped_techniques"):
+    # Use STORED classification (not recomputed) for phases 5/6
+    stored_classification = inv.get("classification")
+
+    # Phase 5: Map MITRE technique for TPs (use stored classification)
+    if stored_classification in ("true_positive", "benign_true_positive") and not inv.get("mapped_techniques"):
         technique = _infer_technique(target)
         return {
             "action_type": "map_technique",
@@ -663,17 +729,17 @@ def _heuristic_action(obs: dict, step: int) -> dict:
             "technique_id": technique,
         }
 
-    # Phase 6: Recommend appropriate response action for TPs
-    if classification in ("true_positive", "benign_true_positive") and not inv.get("recommended_actions"):
-        response_action = _infer_response_action(target, classification)
+    # Phase 6: Recommend appropriate response action for TPs (use stored classification)
+    if stored_classification in ("true_positive", "benign_true_positive") and not inv.get("recommended_actions"):
+        response_action = _infer_response_action(target, stored_classification)
         return {
             "action_type": "recommend_action",
             "alert_id": alert_id,
             "response_action": response_action,
         }
 
-    # Submit when done or low budget
-    if budget <= 3 or not unclassified_alerts:
+    # Submit when budget is low
+    if budget <= 2:
         return {"action_type": "submit_investigation"}
 
     return {"action_type": "noop"}
