@@ -363,7 +363,9 @@ def run_task(
         if len(messages) > 42:
             messages = [messages[0]] + messages[-40:]
 
-    final_score = obs.get("cumulative_reward", 0.0)
+    # Use task_score (normalized 0-1 grader output) for [END]; fall back to cumulative_reward clamped
+    raw_task_score = obs.get("task_score") or obs.get("cumulative_reward", 0.0)
+    final_score = max(0.001, min(0.999, raw_task_score))
     elapsed_total = time.time() - task_start
     log_end(success=True, steps=step, score=final_score, rewards=step_rewards)
     print(f"\nTask complete in {elapsed_total:.1f}s | Steps: {step} | Final score: {final_score:.4f}")

@@ -150,6 +150,7 @@ class SOCEnvironment:
             user_info=result.get("user_info"),
             correlated_events=result.get("correlated_events", []),
             message=result["message"],
+            task_score=result.get("task_score"),
         )
 
     def grade(self) -> float:
@@ -538,7 +539,8 @@ class SOCEnvironment:
         )
 
         efficiency_mult = self._efficiency_multiplier()
-        final_reward = raw_score * efficiency_mult
+        # Cap final_reward to (0.001, 0.999) — validator requires strictly (0, 1)
+        final_reward = max(0.001, min(0.999, raw_score * efficiency_mult))
 
         self._done = True
         self._cumulative_reward += final_reward
@@ -551,6 +553,7 @@ class SOCEnvironment:
 
         return {
             "reward": final_reward,
+            "task_score": final_reward,  # normalized (0,1) score for [END] logging
             "message": msg,
         }
 
@@ -567,6 +570,7 @@ class SOCEnvironment:
         user_info=None,
         correlated_events=None,
         message: str = "",
+        task_score=None,
     ) -> SOCObservation:
         """Construct an SOCObservation from current state."""
         # Collect all correlations found so far
@@ -595,6 +599,7 @@ class SOCEnvironment:
             message=message,
             task_id=self._task_id,
             episode_id=self._episode_id,
+            task_score=task_score,
         )
 
     def _infer_alert_id(self, indicator: str) -> Optional[str]:
@@ -635,12 +640,12 @@ class SOCEnvironment:
         )
 
     def _efficiency_multiplier(self) -> float:
-        """Reward multiplier based on steps used vs budget."""
+        """Reward multiplier based on steps used vs budget. Capped at 1.0 for (0,1) scoring."""
         if not self._config:
             return 1.0
         ratio = self._step / self._config.max_steps
         if ratio <= 0.50:
-            return 1.2
+            return 1.0   # was 1.2 — capped to keep score < 1.0
         if ratio <= 0.75:
             return 1.0
         if ratio <= 0.90:
