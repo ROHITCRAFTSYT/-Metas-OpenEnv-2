@@ -31,7 +31,8 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-from models import AlertClassification, EnvironmentState, SOCAction, SOCObservation
+from baseline_agent import HeuristicBaselineAgent
+from models import EnvironmentState, SOCAction, SOCObservation
 from server.ui import UI_HTML
 from server.environment import SOCEnvironment
 
@@ -42,6 +43,7 @@ from server.environment import SOCEnvironment
 
 _env: Optional[SOCEnvironment] = None
 _env_lock = threading.Lock()
+_baseline_agent = HeuristicBaselineAgent()
 
 
 @asynccontextmanager
@@ -525,11 +527,13 @@ def baseline(request: Optional[ResetRequest] = Body(default=None)):
         try:
             # Reset to a fresh episode
             _env.reset(task_id=req.task_id, seed=req.seed)
+            _baseline_agent.reset()
             # Run heuristic steps until done
             steps = 0
             max_steps = _env._config.max_steps if _env._config else 0
             while not _env._done and steps < max_steps:
-                action = _heuristic_baseline_action(_env)
+                obs = _env._build_observation(reward=0.0)
+                action = SOCAction(**_baseline_agent.next_action(obs.model_dump()))
                 _env.step(action)
                 steps += 1
             # Grade the result with breakdown

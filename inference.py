@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 import httpx
+from baseline_agent import HeuristicBaselineAgent
 try:
     from openai import OpenAI, APIError, APITimeoutError
 except ImportError:
@@ -326,7 +327,7 @@ def run_task(
                 action_dict = NOOP_ACTION
         else:
             # No LLM — use simple heuristic agent for local testing
-            action_dict = _heuristic_action(obs, step)
+            action_dict = _baseline_agent.next_action(obs)
             if verbose:
                 print(f"  Step {step:3d}: [heuristic] {action_dict.get('action_type')}", end="")
 
@@ -380,6 +381,7 @@ def run_task(
 
 # Track correlation attempts across calls (reset on each task run)
 _attempted_correlations: set = set()
+_baseline_agent = HeuristicBaselineAgent()
 
 def _infer_technique(alert: dict) -> str:
     """Infer MITRE ATT&CK technique from alert title and source system."""
@@ -766,8 +768,8 @@ def main():
         print(f"[INFO] Server not reachable at {SERVER_URL}. Starting server subprocess...")
         server_process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         server_ready = False
         for _attempt in range(30):
@@ -803,7 +805,8 @@ def main():
 
     with httpx.Client(base_url=SERVER_URL, timeout=300) as server_client:
         for task_id in tasks:
-            _attempted_correlations.clear()  # reset per-task
+            _attempted_correlations.clear()  # legacy heuristic state
+            _baseline_agent.reset()
             task_score = run_task(
                 task_id=task_id,
                 server_client=server_client,
