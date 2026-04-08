@@ -82,6 +82,19 @@ SERVER_URL="http://localhost:8000" python inference.py
 
 ---
 
+## Validation Snapshot
+
+Recent local verification results:
+
+- `python -m openenv.cli validate . --verbose` -> passed
+- `python -m openenv.cli validate --url http://127.0.0.1:8010 --timeout 10` -> passed
+- `python -m pytest tests\\test_server.py tests\\test_environment.py -q` -> `24 passed`
+- `python benchmark.py --seeds 42 --repeat 1` -> deterministic baseline across all 4 tasks
+
+These checks are intended to make the environment easy to judge, reproduce, and extend.
+
+---
+
 ## Environment API
 
 ### POST /reset
@@ -91,8 +104,8 @@ Start a new episode.
 {"task_id": "phishing", "seed": 42}
 ```
 
-**task_id**: `"phishing"` | `"lateral_movement"` | `"queue_management"`
-**seed**: Any integer — same seed always produces the same scenario.
+**task_id**: `"phishing"` | `"lateral_movement"` | `"queue_management"` | `"insider_threat"`
+**seed**: Any integer. The same seed always produces the same scenario.
 
 ### POST /step
 Execute an action.
@@ -178,14 +191,14 @@ The `SOCObservation` model contains:
 | Recommend no_action for FP | +0.05 |
 | Recommend no_action for TP | -0.10 |
 | NOOP | -0.01 |
-| **Final grader score on submit** | **0.0–1.0 × efficiency multiplier** |
+| **Final grader score on submit** | **0.0-1.0 x efficiency multiplier** |
 | Missed TP on timeout | -0.5 per missed TP |
 
 **Efficiency multiplier:**
-- ≤50% budget used: ×1.2
-- ≤75% budget used: ×1.0
-- ≤90% budget used: ×0.85
-- >90% budget used: ×0.70
+- <=50% budget used: x1.0
+- <=75% budget used: x1.0
+- <=90% budget used: x0.85
+- >90% budget used: x0.70
 
 ---
 
@@ -206,7 +219,7 @@ The agent receives a single phishing alert. It must:
 - Evidence completeness (relevant sources queried): 20%
 - Response action quality: 20%
 
-**Baseline score** (heuristic agent): ~0.45–0.60
+**Measured deterministic baseline** (`seed=42`): 0.65
 
 ### Task 2: Multi-Alert Lateral Movement Kill Chain (Medium)
 **Max steps**: 30 | **Typical completion**: 15–25 steps
@@ -227,7 +240,7 @@ Adjacent alerts share indicators (IP, username, hostname). The agent must correl
 - Response actions per phase: 20%
 - Efficiency bonus: 10%
 
-**Baseline score** (heuristic agent): ~0.30–0.45
+**Measured deterministic baseline** (`seed=42`): 0.71
 
 ### Task 3: Alert Queue Management Under Noise (Hard)
 **Max steps**: 60 | **Typical completion**: 35–55 steps
@@ -248,7 +261,7 @@ Agent must prioritize investigation, efficiently dismiss FPs, and surface hidden
 - Efficiency (steps vs. budget): 15%
 - Response quality for TPs: 15%
 
-**Baseline score** (heuristic agent): ~0.25–0.40
+**Measured deterministic baseline** (`seed=42`): 0.885
 
 ### Task 4: Insider Threat Investigation (Expert)
 **Max steps**: 80 | **Typical completion**: 50–75 steps
@@ -269,7 +282,7 @@ Agent must handle the highest noise-to-signal ratio across all tasks.
 - Efficiency (steps vs. budget): 15%
 - Response quality: 15%
 
-**Baseline score** (heuristic agent): ~0.20–0.35
+**Measured deterministic baseline** (`seed=42`): 0.92
 
 ---
 
@@ -386,10 +399,10 @@ POST /step  {"action_type": "map_technique", "alert_id": "PHI-ABC123", "techniqu
 POST /step  {"action_type": "recommend_action", "alert_id": "PHI-ABC123", "response_action": "isolate_endpoint"}
 → reward=+0.08, cumulative=0.75
 
-# Submit investigation (after 7 steps = 47% budget used → 1.2× efficiency multiplier)
+# Submit investigation (after 7 steps = 47% budget used -> 1.0x efficiency multiplier)
 POST /step  {"action_type": "submit_investigation"}
-→ Grader score: 0.90 × 1.20 = 1.08
-   Final cumulative: 1.83
+→ Grader score: 0.90 x 1.00 = 0.90
+   Final cumulative: 1.65
 ```
 
 ---

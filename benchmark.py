@@ -17,7 +17,7 @@ import time
 
 import httpx
 
-TASKS = ["phishing", "lateral_movement", "queue_management"]
+TASKS = ["phishing", "lateral_movement", "queue_management", "insider_threat"]
 DEFAULT_SEEDS = [42, 123, 256, 789, 1024]
 DEFAULT_SERVER = "http://localhost:7860"
 
@@ -35,8 +35,8 @@ def ensure_server(server_url: str) -> subprocess.Popen | None:
     print(f"[INFO] Starting server subprocess on {server_url} ...")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     for _ in range(30):
         time.sleep(1)

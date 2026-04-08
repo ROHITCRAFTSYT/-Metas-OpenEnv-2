@@ -29,7 +29,7 @@ action_space:
   description: >
     SOCAction with action_type field: enrich_indicator, query_logs, correlate_alerts,
     check_asset, check_user, classify_alert, map_technique, recommend_action,
-    submit_investigation, noop.
+    escalate, submit_investigation, noop.
 
 tasks:
   - id: phishing
