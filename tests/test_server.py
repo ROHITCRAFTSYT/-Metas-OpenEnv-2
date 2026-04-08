@@ -147,20 +147,39 @@ class TestTasksEndpoint:
 
 class TestBaselineEndpoint:
     def test_baseline_endpoint(self, test_client):
-        """POST /baseline runs the heuristic agent and returns a score.
-
-        Note: The baseline endpoint has a known bug (_env._max_steps should be
-        _env._config.max_steps), so it currently returns 500. This test verifies
-        the endpoint exists and responds (accepting either 200 or 500).
-        """
+        """POST /baseline runs the heuristic agent and returns a score."""
         resp = test_client.post("/baseline", json={"task_id": "phishing", "seed": 42})
-        # The endpoint exists and returns a response
-        assert resp.status_code in (200, 500)
-        if resp.status_code == 200:
-            data = resp.json()
-            assert "score" in data
-            assert "breakdown" in data
-            assert data["agent"] == "heuristic"
-            assert data["task_id"] == "phishing"
-            assert isinstance(data["score"], (int, float))
-            assert 0.0 <= data["score"] <= 1.0
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "score" in data
+        assert "breakdown" in data
+        assert data["agent"] == "heuristic"
+        assert data["task_id"] == "phishing"
+        assert isinstance(data["score"], (int, float))
+        assert 0.0 <= data["score"] <= 1.0
+
+
+class TestLogsEndpoint:
+    def test_logs_endpoint_returns_entries_for_alert_and_source(self, test_client):
+        """GET /logs/{source} should return source-scoped entries for a specific alert."""
+        reset_resp = test_client.post("/reset", json={"task_id": "phishing", "seed": 42})
+        alert_id = reset_resp.json()["alert_queue"][0]["alert_id"]
+
+        resp = test_client.get(f"/logs/email_gateway?alert_id={alert_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source"] == "email_gateway"
+        assert data["alert_id"] == alert_id
+        assert data["count"] > 0
+        assert len(data["entries"]) > 0
+
+    def test_logs_endpoint_returns_entries_for_source_without_alert_id(self, test_client):
+        """GET /logs/{source} without alert_id should aggregate matching source entries."""
+        test_client.post("/reset", json={"task_id": "phishing", "seed": 42})
+
+        resp = test_client.get("/logs/email_gateway")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["source"] == "email_gateway"
+        assert data["count"] > 0
+        assert len(data["entries"]) > 0
