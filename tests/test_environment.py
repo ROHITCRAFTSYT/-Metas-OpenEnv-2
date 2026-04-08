@@ -96,6 +96,28 @@ class TestSOCEnvironment:
         # Check that the classification was recorded
         assert obs.investigations[alert_id].classification == AlertClassification.TRUE_POSITIVE
 
+    def test_classify_after_user_lookup_counts_as_evidence(self, environment):
+        """User lookups should count as evidence and avoid the no-evidence penalty."""
+        obs = environment.reset(task_id="phishing", seed=42)
+        alert_id = obs.alert_queue[0].alert_id
+        username = next(iter(environment._config.user_db.keys()))
+
+        lookup_obs = environment.step(SOCAction(
+            action_type=ActionType.CHECK_USER,
+            username=username,
+        ))
+        assert lookup_obs.user_info is not None
+
+        obs = environment.step(SOCAction(
+            action_type=ActionType.CLASSIFY_ALERT,
+            alert_id=alert_id,
+            classification=AlertClassification.TRUE_POSITIVE,
+            confidence=0.9,
+        ))
+
+        assert "without gathering any evidence" not in obs.message
+        assert obs.reward == 0.30
+
     def test_step_submit_investigation(self, environment):
         """Submitting investigation should finalize the episode (done=True)."""
         obs = environment.reset(task_id="phishing", seed=42)

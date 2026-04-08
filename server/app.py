@@ -527,7 +527,7 @@ def baseline(request: Optional[ResetRequest] = Body(default=None)):
             _env.reset(task_id=req.task_id, seed=req.seed)
             # Run heuristic steps until done
             steps = 0
-            max_steps = _env._max_steps
+            max_steps = _env._config.max_steps if _env._config else 0
             while not _env._done and steps < max_steps:
                 action = _heuristic_baseline_action(_env)
                 _env.step(action)
@@ -808,16 +808,15 @@ def query_log_source(
         log_db = _env._config.log_db
         entries = []
 
+        source_logs = log_db.get(source, {})
+
         if alert_id:
-            # Get logs for specific alert
-            alert_logs = log_db.get(alert_id, {})
-            source_logs = alert_logs.get(source, [])
-            entries = [e.model_dump() for e in source_logs]
+            # Get logs for a specific alert within this source.
+            entries = [e.model_dump() for e in source_logs.get(alert_id, [])]
         else:
-            # Search across all alerts for this source
-            for aid, alert_logs in log_db.items():
-                source_logs = alert_logs.get(source, [])
-                entries.extend(e.model_dump() for e in source_logs)
+            # Return logs for this source across all alerts.
+            for alert_entries in source_logs.values():
+                entries.extend(e.model_dump() for e in alert_entries)
 
         return {
             "source": source,
