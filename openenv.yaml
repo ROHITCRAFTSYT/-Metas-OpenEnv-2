@@ -1,0 +1,89 @@
+name: soc-triage-gym
+version: "0.1.0"
+description: >
+  A reinforcement learning environment simulating a Security Operations Center (SOC) analyst.
+  An AI agent receives SIEM alerts and must enrich threat indicators, query log sources,
+  correlate events across alerts, classify alerts as TP/FP/BTP, map findings to MITRE ATT&CK,
+  and recommend containment actions. Simulates realistic SOC conditions with 75-95% false
+  positive rates, multi-stage attacks hidden in noise, and information asymmetry.
+
+author: rohitcraftsyt
+
+tags:
+  - openenv
+  - cybersecurity
+  - soc
+  - siem
+  - mitre-attack
+  - reinforcement-learning
+
+observation_space:
+  type: dict
+  description: >
+    SOCObservation containing alert_queue (list of alerts with IOCs), investigations
+    (per-alert investigation state), enrichment_results, log_results, correlated_events,
+    asset_info, user_info, investigation_budget, step, done, reward, cumulative_reward, message.
+
+action_space:
+  type: dict
+  description: >
+    SOCAction with action_type field: enrich_indicator, query_logs, correlate_alerts,
+    check_asset, check_user, classify_alert, map_technique, recommend_action,
+    escalate, submit_investigation, noop.
+
+tasks:
+  - id: phishing
+    name: "Single-Alert Phishing Triage"
+    description: >
+      Triage a single phishing email alert. Enrich IOCs, query logs,
+      classify as TP or FP, map MITRE ATT&CK technique, recommend response.
+    difficulty: easy
+    max_steps: 15
+    reward_range: [0.0, 1.0]
+
+  - id: lateral_movement
+    name: "Multi-Alert Lateral Movement Kill Chain"
+    description: >
+      Investigate 5 correlated alerts forming a kill chain: phishing,
+      credential dump, lateral movement, data staging, exfiltration.
+      Correlate all alerts, map techniques, classify all as true positives.
+    difficulty: medium
+    max_steps: 30
+    reward_range: [0.0, 1.0]
+
+  - id: queue_management
+    name: "Alert Queue Management Under Noise"
+    description: >
+      Triage 20 mixed alerts: 5 true positives in 2 attack chains,
+      3 benign true positives, 12 false positives. Dismiss noise
+      efficiently while surfacing real attacks.
+    difficulty: hard
+    max_steps: 60
+    reward_range: [0.0, 1.0]
+
+  - id: insider_threat
+    name: "Insider Threat Investigation"
+    description: >
+      Investigate 30 alerts hiding 3 insider threat attack chains:
+      unauthorized data theft, compromised vendor account, and a
+      disgruntled employee. 9 true positives, 5 benign true positives,
+      16 false positives. Expert-level SOC triage under heavy noise.
+    difficulty: expert
+    max_steps: 80
+    reward_range: [0.0, 1.0]
+
+reward:
+  range: [0.0, 1.0]
+  dense: true
+  description: >
+    Dense step rewards for enrichment, log queries, correlations, classifications.
+    Final reward on submit: grader score (0.0-1.0) x efficiency multiplier.
+
+endpoints:
+  health:   GET  /health
+  reset:    POST /reset
+  step:     POST /step
+  state:    GET  /state
+  tasks:    GET  /tasks
+  grader:   POST /grader
+  baseline: POST /baseline
