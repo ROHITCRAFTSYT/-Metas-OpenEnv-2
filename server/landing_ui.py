@@ -1,4 +1,4 @@
-"""Editorial Hugging Face Space UI served at / and /ui."""
+"""Distinct Hugging Face Space UI served at / and /ui."""
 
 UI_HTML = r"""<!DOCTYPE html>
 <html lang="en">
@@ -8,149 +8,268 @@ UI_HTML = r"""<!DOCTYPE html>
 <title>SOC Triage Gym</title>
 <style>
 :root{
-  --bg:#f6eedb;
-  --paper:#fffaf0;
-  --panel:#fffdf8;
-  --ink:#1f2d3a;
-  --muted:#596b7b;
-  --line:#d8cbb2;
-  --soft:#ece1cb;
-  --accent:#1f8f6a;
-  --accent-soft:#dff3eb;
-  --blue:#406999;
-  --good:#0f9b61;
-  --warn:#b67b17;
-  --bad:#c45151;
-  --shadow:0 18px 40px rgba(86, 70, 39, .10);
+  --bg:#0c1117;
+  --bg2:#121923;
+  --panel:#f3eee2;
+  --panel-2:#e7dfcf;
+  --paper:#fffaf1;
+  --ink:#18222d;
+  --muted:#5f6f7e;
+  --line:#b9aa8a;
+  --accent:#c96d43;
+  --accent-2:#275d7e;
+  --accent-3:#1d7f67;
+  --good:#15835f;
+  --warn:#b87a1d;
+  --bad:#bb4e4e;
+  --shadow:0 24px 60px rgba(0,0,0,.22);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
-  background:linear-gradient(180deg,#fff7e6 0%, #f6eedb 100%);
   color:var(--ink);
   font-family:Georgia,"Times New Roman",serif;
+  background:
+    radial-gradient(circle at top left, rgba(201,109,67,.16), transparent 28%),
+    linear-gradient(180deg, var(--bg) 0, var(--bg2) 220px, #d8d1c3 220px, #e7dfcf 100%);
 }
-.shell{max-width:1120px;margin:0 auto;padding:28px 18px 44px}
+.shell{max-width:1200px;margin:0 auto;padding:24px 18px 46px}
 .frame{
-  background:rgba(255,250,240,.85);
-  border:1px solid var(--line);
-  border-radius:28px;
+  background:linear-gradient(180deg, rgba(255,250,241,.98), rgba(243,238,226,.97));
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:32px;
   box-shadow:var(--shadow);
-  padding:28px;
+  padding:24px;
+  position:relative;
+  overflow:hidden;
+}
+.frame::before{
+  content:"";
+  position:absolute;
+  inset:0 0 auto 0;
+  height:8px;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
+}
+.hero{
+  display:grid;
+  grid-template-columns:1.45fr .85fr;
+  gap:18px;
+  margin-bottom:18px;
+}
+.hero-main{
+  background:
+    radial-gradient(circle at top right, rgba(39,93,126,.12), transparent 32%),
+    linear-gradient(180deg, #fffaf1, #efe6d5);
+  border:1px solid #d6c7aa;
+  border-radius:28px;
+  padding:24px;
 }
 .eyebrow{
   display:inline-flex;
+  align-items:center;
+  gap:8px;
   padding:8px 14px;
   border-radius:999px;
-  background:var(--accent-soft);
-  color:#0b6d50;
-  font-size:14px;
-  letter-spacing:.04em;
+  border:1px solid #d7c4a5;
+  background:#fff4de;
+  color:#8e5b23;
+  font-size:12px;
+  letter-spacing:.14em;
   text-transform:uppercase;
 }
+.eyebrow::before{
+  content:"";
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--accent);
+}
 h1{
-  margin:14px 0 10px;
-  font-size:70px;
-  line-height:.95;
-  letter-spacing:-.04em;
+  margin:18px 0 12px;
+  font-size:78px;
+  line-height:.88;
+  letter-spacing:-.06em;
+  max-width:720px;
 }
 .lede{
-  max-width:760px;
-  color:var(--blue);
-  font-size:18px;
-  line-height:1.55;
-  margin-bottom:26px;
+  max-width:700px;
+  color:#36516c;
+  font-size:19px;
+  line-height:1.6;
+  margin:0;
 }
-.top-grid,.mid-grid,.bottom-grid{
+.hero-strip{
   display:grid;
-  gap:16px;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-top:22px;
 }
-.top-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
-.mid-grid{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px}
-.bottom-grid{grid-template-columns:1.2fr .8fr}
-.card{
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:22px;
+.strip-card{
+  background:rgba(255,255,255,.5);
+  border:1px solid #d8c8ac;
+  border-radius:18px;
+  padding:14px;
+}
+.strip-kicker{
+  color:#7a6a57;
+  font-size:11px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.strip-value{
+  margin-top:8px;
+  font-size:32px;
+  font-weight:700;
+  line-height:1;
+}
+.hero-side{
+  display:grid;
+  gap:14px;
+}
+.bulletin,.card{
+  background:linear-gradient(180deg, var(--panel), var(--paper));
+  border:1px solid #d0c0a2;
+  border-radius:24px;
   padding:18px;
-  box-shadow:0 8px 22px rgba(86,70,39,.05);
 }
-.card h2,.card h3{
+.bulletin{
+  background:
+    linear-gradient(135deg, rgba(201,109,67,.12), transparent 44%),
+    linear-gradient(180deg, #f5ecdc, #ece3d2);
+}
+.bulletin-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.stamp{
+  display:inline-flex;
+  padding:5px 10px;
+  border-radius:999px;
+  background:#1f2f3d;
+  color:#f7f0e2;
+  font-size:11px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.card h2,.card h3,.bulletin h2{
   margin:0 0 8px;
   font-size:17px;
 }
-.card p,.card li,.card label,.card span,.card code{
+.card p,.card li,.card label,.card span,.card code,.bulletin p{
   font-size:15px;
-  line-height:1.55;
+  line-height:1.58;
 }
 .muted{color:var(--muted)}
 .mono{font-family:Consolas,"Courier New",monospace}
 .status-row{display:flex;align-items:center;gap:10px}
-.dot{
-  width:10px;height:10px;border-radius:50%;
-  background:#b8aa8a;
-}
+.dot{width:10px;height:10px;border-radius:50%;background:#b8aa8a}
 .dot.live{background:var(--good)}
+.top-grid{
+  display:grid;
+  grid-template-columns:1.05fr 1.2fr .85fr;
+  gap:16px;
+  margin-bottom:16px;
+}
+.top-grid .card:nth-child(2){
+  background:
+    linear-gradient(135deg, rgba(39,93,126,.10), transparent 44%),
+    linear-gradient(180deg, var(--paper), #f0e7d8);
+}
+.scenario-band{
+  margin-bottom:16px;
+}
+.section-label{
+  margin:0 0 10px;
+  color:#80684e;
+  font-size:12px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+.mid-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+}
 .task-card{
   cursor:pointer;
-  transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease;
+  transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.72), rgba(244,236,221,.95));
 }
-.task-card:hover{transform:translateY(-2px)}
+.task-card:hover{transform:translateY(-3px)}
 .task-card.active{
-  border-color:#9bcbb9;
-  box-shadow:0 12px 26px rgba(31,143,106,.10);
-  background:#fcfffb;
+  background:
+    linear-gradient(180deg, rgba(39,93,126,.08), rgba(29,127,103,.12)),
+    linear-gradient(180deg, rgba(255,255,255,.84), rgba(244,236,221,.98));
+  border-color:#7f9f9b;
+  box-shadow:0 12px 26px rgba(39,93,126,.10);
 }
 .task-meta{
   display:flex;
   justify-content:space-between;
-  align-items:center;
+  align-items:flex-start;
   gap:12px;
   margin-bottom:10px;
+}
+.task-grade{
+  color:#9b6b34;
+  font-size:12px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
 }
 .pill{
   display:inline-flex;
   padding:4px 10px;
   border-radius:999px;
-  background:#f2ead9;
-  color:var(--muted);
+  background:#efe3ca;
+  color:#6f624d;
   font-size:12px;
 }
-.pill.live{background:var(--accent-soft);color:#0b6d50}
+.pill.live{background:#ddeee7;color:#165f4a}
+.bottom-grid{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:16px;
+}
+.stack{display:grid;gap:16px}
 .controls{
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:14px;
   margin-top:8px;
 }
-label{display:block;margin-bottom:6px;color:var(--muted)}
+label{
+  display:block;
+  margin-bottom:6px;
+  color:var(--muted);
+  font-size:13px;
+}
 select,button{
   width:100%;
-  border-radius:16px;
-  border:1px solid var(--line);
+  border-radius:14px;
+  border:1px solid #cdbb9b;
   padding:12px 14px;
   font:inherit;
 }
-select{background:#fffef9}
-.actions{
-  display:flex;
-  gap:12px;
-  margin-top:14px;
-}
+select{background:#fffdf7}
+.actions{display:flex;gap:12px;margin-top:14px}
 button{
   cursor:pointer;
   font-weight:700;
-  transition:transform .15s ease,opacity .15s ease;
+  transition:transform .15s ease,opacity .15s ease,background .15s ease;
 }
 button:hover{transform:translateY(-1px)}
 button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .primary{
-  background:#203142;
+  background:linear-gradient(135deg, #1c2d3d, #274b67);
   color:#fff;
-  border-color:#203142;
+  border-color:#1c2d3d;
 }
 .secondary{
-  background:#f6f0e3;
+  background:#f2e8d8;
   color:var(--ink);
 }
 .metric{
@@ -160,9 +279,9 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   margin:8px 0 4px;
 }
 .score{
-  font-size:72px;
+  font-size:76px;
   line-height:.9;
-  letter-spacing:-.05em;
+  letter-spacing:-.06em;
 }
 .good{color:var(--good)}
 .warn{color:var(--warn)}
@@ -174,27 +293,27 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 }
 .stat-item{
   padding:14px;
-  border:1px solid var(--soft);
+  border:1px solid #d9cbb2;
   border-radius:16px;
-  background:#fffcf6;
+  background:rgba(255,255,255,.56);
 }
 .progress{
   width:100%;
   height:10px;
-  background:#efe5d3;
+  background:#e8dbc2;
   border-radius:999px;
   overflow:hidden;
   margin-top:10px;
 }
 .progress > div{
   height:100%;
-  background:linear-gradient(90deg,#2f5e8f,#1f8f6a);
+  background:linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3));
 }
 .reward-bars{
   display:flex;
   align-items:flex-end;
   gap:8px;
-  height:140px;
+  height:150px;
   margin-top:12px;
 }
 .reward-col{
@@ -207,12 +326,12 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 }
 .reward-bar{
   width:100%;
-  max-width:26px;
-  border-radius:10px 10px 4px 4px;
+  max-width:24px;
+  border-radius:999px;
   background:#d1cabf;
 }
-.reward-bar.pos{background:linear-gradient(180deg,#7bcfac,#179360)}
-.reward-bar.neg{background:linear-gradient(180deg,#dd8e8e,#c45151)}
+.reward-bar.pos{background:linear-gradient(180deg,#ecae7c,#c96d43)}
+.reward-bar.neg{background:linear-gradient(180deg,#c58a8a,#bb4e4e)}
 .chain{
   display:flex;
   gap:10px;
@@ -220,11 +339,11 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   padding-bottom:4px;
 }
 .chain-node{
-  min-width:140px;
-  border:1px solid var(--soft);
-  border-radius:16px;
+  min-width:150px;
+  border:1px solid #d8c7a8;
+  border-radius:18px;
   padding:12px;
-  background:#fffdf8;
+  background:#fff9ef;
 }
 .queue{
   display:grid;
@@ -232,11 +351,23 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   gap:12px;
 }
 .alert{
-  border:1px solid var(--soft);
-  border-radius:16px;
+  border:1px solid #d8c7a8;
+  border-radius:18px;
   padding:14px;
-  background:#fffdf8;
+  background:#fffaf2;
+  position:relative;
 }
+.alert::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:14px;
+  bottom:14px;
+  width:4px;
+  border-radius:999px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+.alert > *{margin-left:10px}
 .alert-top{
   display:flex;
   flex-wrap:wrap;
@@ -244,9 +375,10 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   margin:10px 0 8px;
 }
 .log{
-  background:#f8f3e8;
-  border:1px solid var(--soft);
-  border-radius:16px;
+  background:linear-gradient(180deg, #161d25, #12171e);
+  color:#dce7ef;
+  border:1px solid #314250;
+  border-radius:18px;
   padding:14px;
   height:280px;
   overflow:auto;
@@ -254,34 +386,65 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   font-size:13px;
   line-height:1.6;
 }
-.empty{
-  color:var(--muted);
-  padding:18px 0;
-}
+.empty{color:var(--muted);padding:18px 0}
 .banner{
   display:none;
   margin-bottom:16px;
   padding:14px 16px;
   border-radius:16px;
-  border:1px solid var(--line);
-  background:#fffdf8;
+  border:1px solid #d2bea0;
+  background:#fffaf1;
 }
-.banner.info{display:block;background:#f3efe5}
-.banner.success{display:block;background:#eef8f1;border-color:#bfe1ce}
-.banner.error{display:block;background:#fff0ef;border-color:#e4b8b5}
-@media (max-width: 940px){
-  h1{font-size:50px}
-  .top-grid,.mid-grid,.bottom-grid,.queue,.controls,.stat-list{grid-template-columns:1fr}
+.banner.info{display:block;background:#f2ebdd}
+.banner.success{display:block;background:#e7f3eb;border-color:#b8d0c1}
+.banner.error{display:block;background:#fae9e7;border-color:#dbb2ae}
+@media (max-width: 980px){
+  .hero,.top-grid,.mid-grid,.bottom-grid,.queue,.controls,.stat-list,.hero-strip{grid-template-columns:1fr}
   .actions{flex-direction:column}
+  h1{font-size:52px}
 }
 </style>
 </head>
 <body>
 <div class="shell">
   <div class="frame">
-    <div class="eyebrow">OpenEnv Space</div>
-    <h1>SOC Triage Gym</h1>
-    <div class="lede">A readable Hugging Face Space dashboard for a SOC analyst environment. Launch an episode, inspect the queue, and run the heuristic agent without landing on raw API JSON.</div>
+    <section class="hero">
+      <div class="hero-main">
+        <div class="eyebrow">Security Simulation Desk</div>
+        <h1>SOC Triage Gym</h1>
+        <p class="lede">A distinct operations-style interface for evaluating analyst agents across phishing, kill chains, noisy queues, and insider threat investigations. Start an episode, inspect the queue, and grade the baseline without dropping into raw endpoint output.</p>
+        <div class="hero-strip">
+          <div class="strip-card">
+            <div class="strip-kicker">Scenarios</div>
+            <div class="strip-value">4</div>
+            <div class="muted">easy to expert tasks</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-kicker">Workflow</div>
+            <div class="strip-value mono">REST</div>
+            <div class="muted">reset, step, state, baseline</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-kicker">Focus</div>
+            <div class="strip-value">SOC</div>
+            <div class="muted">triage quality and signal handling</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="bulletin">
+          <div class="bulletin-head">
+            <h2>Operations Bulletin</h2>
+            <span class="stamp">Live App</span>
+          </div>
+          <p class="muted">This Space is designed like a field desk rather than a product brochure: quick launch controls, readable status, and direct evidence of how the environment behaves.</p>
+        </div>
+        <div class="card">
+          <h2>What Agents Can Do</h2>
+          <p class="mono">enrich_indicator, query_logs, correlate_alerts, check_asset, check_user, classify_alert, map_technique, recommend_action, escalate</p>
+        </div>
+      </div>
+    </section>
 
     <div id="banner" class="banner"></div>
 
@@ -294,36 +457,39 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
         </div>
       </div>
       <div class="card">
-        <h2>Supported actions</h2>
-        <p class="mono">enrich_indicator, query_logs, correlate_alerts, check_asset, check_user, classify_alert, map_technique, recommend_action, escalate</p>
+        <h2>API Surface</h2>
+        <p>Interactive docs and the standard <span class="mono">/reset</span>, <span class="mono">/step</span>, <span class="mono">/state</span>, and <span class="mono">/metadata</span> endpoints remain available behind the UI.</p>
       </div>
       <div class="card">
-        <h2>API</h2>
-        <p>Interactive docs and standard <span class="mono">/reset</span>, <span class="mono">/step</span>, <span class="mono">/state</span>, and <span class="mono">/metadata</span> endpoints remain available.</p>
+        <h2>Design Mode</h2>
+        <p>This theme intentionally mixes incident-desk cues, darker telemetry accents, and warmer paper panels so it reads as its own identity.</p>
       </div>
     </div>
 
-    <div class="mid-grid" id="taskGrid">
+    <div class="scenario-band">
+      <p class="section-label">Scenario Board</p>
+      <div class="mid-grid" id="taskGrid">
       <div class="card task-card active" data-task="phishing">
-        <div class="task-meta"><h3>Easy</h3><span class="pill">15 step budget</span></div>
+        <div class="task-meta"><div><div class="task-grade">Easy</div><h3>Phishing</h3></div><span class="pill">15 step budget</span></div>
         <p>Resolve a single phishing alert with enrichment, evidence gathering, and clean classification.</p>
       </div>
       <div class="card task-card" data-task="lateral_movement">
-        <div class="task-meta"><h3>Medium</h3><span class="pill">30 step budget</span></div>
+        <div class="task-meta"><div><div class="task-grade">Medium</div><h3>Lateral Movement</h3></div><span class="pill">30 step budget</span></div>
         <p>Reconstruct a multi-alert intrusion path across credential theft, movement, staging, and exfiltration.</p>
       </div>
       <div class="card task-card" data-task="queue_management">
-        <div class="task-meta"><h3>Hard</h3><span class="pill">60 step budget</span></div>
+        <div class="task-meta"><div><div class="task-grade">Hard</div><h3>Queue Management</h3></div><span class="pill">60 step budget</span></div>
         <p>Work through a realistic noisy queue where true positives hide inside false-positive traffic.</p>
       </div>
       <div class="card task-card" data-task="insider_threat">
-        <div class="task-meta"><h3>Expert</h3><span class="pill">80 step budget</span></div>
+        <div class="task-meta"><div><div class="task-grade">Expert</div><h3>Insider Threat</h3></div><span class="pill">80 step budget</span></div>
         <p>Investigate the largest scenario with mixed intent signals, hidden chains, and higher analyst pressure.</p>
+      </div>
       </div>
     </div>
 
     <div class="bottom-grid">
-      <div>
+      <div class="stack">
         <div class="card" style="margin-bottom:16px;">
           <h2>Launch Evaluation</h2>
           <div class="controls">
@@ -369,7 +535,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
         </div>
       </div>
 
-      <div>
+      <div class="stack">
         <div class="card" style="margin-bottom:16px;">
           <h2>Grader Result</h2>
           <div id="scorePanel" class="empty">Run the heuristic agent to see the final score and breakdown.</div>
