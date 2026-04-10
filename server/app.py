@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 from baseline_agent import HeuristicBaselineAgent
 from models import EnvironmentState, SOCAction, SOCObservation
-from server.ui import UI_HTML
+from server.landing_ui import UI_HTML
 from server.environment import SOCEnvironment
 
 
@@ -416,26 +416,10 @@ def ui():
     return UI_HTML
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def root():
-    """Environment info endpoint."""
-    return {
-        "name": "soc-triage-gym",
-        "version": "0.1.0",
-        "description": "SOC Triage RL Environment — OpenEnv compliant",
-        "tasks": ["phishing", "lateral_movement", "queue_management", "insider_threat"],
-        "endpoints": {
-            "reset": "POST /reset",
-            "step": "POST /step",
-            "state": "GET /state",
-            "health": "GET /health",
-            "alerts": "GET /api/alerts",
-            "threat_intel": "GET /threat-intel/ip/{ip}",
-            "logs": "GET /logs/{source}",
-            "docs": "GET /docs",
-        },
-    }
-
+    """Primary Space landing page."""
+    return UI_HTML
 
 # ---------------------------------------------------------------------------
 # REST Tool Endpoints (for LLM agents using direct REST tool calls)
@@ -848,3 +832,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
