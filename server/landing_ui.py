@@ -158,6 +158,9 @@ h1{
   margin:0 0 8px;
   font-size:17px;
 }
+.card > *{
+  min-width:0;
+}
 .card p,.card li,.card label,.card span,.card code,.bulletin p{
   font-size:15px;
   line-height:1.58;
@@ -169,7 +172,7 @@ h1{
 .dot.live{background:var(--good)}
 .top-grid{
   display:grid;
-  grid-template-columns:1.05fr 1.2fr .85fr;
+  grid-template-columns:repeat(3,minmax(220px,1fr));
   gap:16px;
   margin-bottom:16px;
 }
@@ -190,7 +193,7 @@ h1{
 }
 .mid-grid{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:14px;
 }
 .task-card{
@@ -231,13 +234,14 @@ h1{
 .pill.live{background:#ddeee7;color:#165f4a}
 .bottom-grid{
   display:grid;
-  grid-template-columns:1.2fr .8fr;
+  grid-template-columns:minmax(0,1.35fr) minmax(320px,.8fr);
   gap:16px;
+  align-items:start;
 }
 .stack{display:grid;gap:16px}
 .controls{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   gap:14px;
   margin-top:8px;
 }
@@ -256,6 +260,9 @@ select,button{
 }
 select{background:#fffdf7}
 .actions{display:flex;gap:12px;margin-top:14px}
+.actions > *{
+  flex:1 1 0;
+}
 button{
   cursor:pointer;
   font-weight:700;
@@ -279,16 +286,17 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   margin:8px 0 4px;
 }
 .score{
-  font-size:76px;
+  font-size:clamp(42px, 6vw, 76px);
   line-height:.9;
   letter-spacing:-.06em;
+  overflow-wrap:anywhere;
 }
 .good{color:var(--good)}
 .warn{color:var(--warn)}
 .bad{color:var(--bad)}
 .stat-list{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:12px;
 }
 .stat-item{
@@ -296,6 +304,25 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   border:1px solid #d9cbb2;
   border-radius:16px;
   background:rgba(255,255,255,.56);
+  min-width:0;
+  overflow:hidden;
+}
+.stat-item .muted{
+  display:block;
+  overflow-wrap:anywhere;
+}
+.stat-item .metric{
+  font-size:clamp(28px, 4vw, 36px);
+  overflow-wrap:anywhere;
+}
+.score-breakdown{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:12px;
+}
+.score-caption{
+  margin:8px 0 14px;
+  overflow-wrap:anywhere;
 }
 .progress{
   width:100%;
@@ -347,7 +374,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 }
 .queue{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
   gap:12px;
 }
 .alert{
@@ -368,6 +395,9 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   background:linear-gradient(180deg, var(--accent), var(--accent-2));
 }
 .alert > *{margin-left:10px}
+.alert strong,.alert .mono,.alert .muted{
+  overflow-wrap:anywhere;
+}
 .alert-top{
   display:flex;
   flex-wrap:wrap;
@@ -385,6 +415,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   font-family:Consolas,"Courier New",monospace;
   font-size:13px;
   line-height:1.6;
+  overflow-wrap:anywhere;
 }
 .empty{color:var(--muted);padding:18px 0}
 .banner{
@@ -398,8 +429,13 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .banner.info{display:block;background:#f2ebdd}
 .banner.success{display:block;background:#e7f3eb;border-color:#b8d0c1}
 .banner.error{display:block;background:#fae9e7;border-color:#dbb2ae}
+@media (max-width: 1180px){
+  .bottom-grid{
+    grid-template-columns:1fr;
+  }
+}
 @media (max-width: 980px){
-  .hero,.top-grid,.mid-grid,.bottom-grid,.queue,.controls,.stat-list,.hero-strip{grid-template-columns:1fr}
+  .hero,.top-grid,.hero-strip{grid-template-columns:1fr}
   .actions{flex-direction:column}
   h1{font-size:52px}
 }
@@ -628,7 +664,7 @@ function renderChain(alerts){
     <div class="chain-node">
       <strong>${(alert.title || 'Alert').substring(0, 28)}</strong>
       <div class="muted">${clsKey(alert.classification)}</div>
-    </div>`).join('<div style="align-self:center;color:#b39d74;">→</div>')}</div>`;
+    </div>`).join('<div style="align-self:center;color:#b39d74;">&rarr;</div>')}</div>`;
 }
 
 function renderRewards(rewards){
@@ -647,8 +683,8 @@ function renderScore(result){
   const breakdown = result.breakdown || {};
   const klass = scoreClass(result.score || 0);
   return `<div class="${klass} score">${((result.score || 0) * 100).toFixed(1)}%</div>
-    <p class="muted" style="margin:8px 0 14px;">${titleize(result.task_id)} · ${result.steps_used || 0} steps used</p>
-    <div class="stat-list">${Object.entries(breakdown).map(([key, value]) => `
+    <p class="muted score-caption">${titleize(result.task_id)} | ${result.steps_used || 0} steps used</p>
+    <div class="score-breakdown">${Object.entries(breakdown).map(([key, value]) => `
       <div class="stat-item">
         <div class="muted">${titleize(key)}</div>
         <div class="metric">${Math.round(value * 100)}%</div>
@@ -731,7 +767,7 @@ window.onload = async () => {
     const response = await fetch('/health');
     const health = await response.json();
     q('statusDot').classList.add('live');
-    q('statusText').textContent = `Running and ready for evaluation · ${health.env} v${health.version}`;
+    q('statusText').textContent = `Running and ready for evaluation | ${health.env} v${health.version}`;
     log(`server online`);
   } catch (error) {
     q('statusText').textContent = 'Server health check failed';
@@ -741,3 +777,5 @@ window.onload = async () => {
 </script>
 </body>
 </html>"""
+
+
