@@ -31,8 +31,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-from models import AlertClassification, EnvironmentState, SOCAction, SOCObservation
-from server.ui import UI_HTML
+from baseline_agent import HeuristicBaselineAgent
+from models import EnvironmentState, SOCAction, SOCObservation
+from server.landing_ui import UI_HTML
 from server.environment import SOCEnvironment
 
 
@@ -42,6 +43,7 @@ from server.environment import SOCEnvironment
 
 _env: Optional[SOCEnvironment] = None
 _env_lock = threading.Lock()
+_baseline_agent = HeuristicBaselineAgent()
 
 
 @asynccontextmanager
@@ -414,26 +416,10 @@ def ui():
     return UI_HTML
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def root():
-    """Environment info endpoint."""
-    return {
-        "name": "soc-triage-gym",
-        "version": "0.1.0",
-        "description": "SOC Triage RL Environment — OpenEnv compliant",
-        "tasks": ["phishing", "lateral_movement", "queue_management", "insider_threat"],
-        "endpoints": {
-            "reset": "POST /reset",
-            "step": "POST /step",
-            "state": "GET /state",
-            "health": "GET /health",
-            "alerts": "GET /api/alerts",
-            "threat_intel": "GET /threat-intel/ip/{ip}",
-            "logs": "GET /logs/{source}",
-            "docs": "GET /docs",
-        },
-    }
-
+    """Primary Space landing page."""
+    return UI_HTML
 
 # ---------------------------------------------------------------------------
 # REST Tool Endpoints (for LLM agents using direct REST tool calls)
@@ -525,11 +511,13 @@ def baseline(request: Optional[ResetRequest] = Body(default=None)):
         try:
             # Reset to a fresh episode
             _env.reset(task_id=req.task_id, seed=req.seed)
+            _baseline_agent.reset()
             # Run heuristic steps until done
             steps = 0
-            max_steps = _env._max_steps
+            max_steps = _env._config.max_steps if _env._config else 0
             while not _env._done and steps < max_steps:
-                action = _heuristic_baseline_action(_env)
+                obs = _env._build_observation(reward=0.0)
+                action = SOCAction(**_baseline_agent.next_action(obs.model_dump()))
                 _env.step(action)
                 steps += 1
             # Grade the result with breakdown
@@ -808,16 +796,15 @@ def query_log_source(
         log_db = _env._config.log_db
         entries = []
 
+        source_logs = log_db.get(source, {})
+
         if alert_id:
-            # Get logs for specific alert
-            alert_logs = log_db.get(alert_id, {})
-            source_logs = alert_logs.get(source, [])
-            entries = [e.model_dump() for e in source_logs]
+            # Get logs for a specific alert within this source.
+            entries = [e.model_dump() for e in source_logs.get(alert_id, [])]
         else:
-            # Search across all alerts for this source
-            for aid, alert_logs in log_db.items():
-                source_logs = alert_logs.get(source, [])
-                entries.extend(e.model_dump() for e in source_logs)
+            # Return logs for this source across all alerts.
+            for alert_entries in source_logs.values():
+                entries.extend(e.model_dump() for e in alert_entries)
 
         return {
             "source": source,
@@ -845,3 +832,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

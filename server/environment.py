@@ -385,6 +385,8 @@ class SOCEnvironment:
             len(inv.enriched_indicators)
             + len(inv.queried_sources)
             + len(inv.correlations_found)
+            + len(inv.assets_looked_up)
+            + len(inv.users_looked_up)
         )
         if evidence_count < 1:
             reward = -0.10  # Must gather at least some evidence first
