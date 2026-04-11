@@ -131,6 +131,8 @@ h1{
   border:1px solid #d0c0a2;
   border-radius:24px;
   padding:18px;
+  min-width:0;
+  overflow:hidden;
 }
 .bulletin{
   background:
@@ -214,8 +216,9 @@ h1{
   display:flex;
   justify-content:space-between;
   align-items:flex-start;
-  gap:12px;
+  gap:8px;
   margin-bottom:10px;
+  flex-wrap:wrap;
 }
 .task-grade{
   color:#9b6b34;
@@ -230,15 +233,17 @@ h1{
   background:#efe3ca;
   color:#6f624d;
   font-size:12px;
+  flex-shrink:0;
+  white-space:nowrap;
 }
 .pill.live{background:#ddeee7;color:#165f4a}
 .bottom-grid{
   display:grid;
-  grid-template-columns:minmax(0,1.35fr) minmax(0,.8fr);
+  grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
   gap:16px;
   align-items:start;
 }
-.stack{display:grid;gap:16px}
+.stack{display:grid;gap:16px;min-width:0}
 .controls{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -251,25 +256,34 @@ label{
   color:var(--muted);
   font-size:13px;
 }
-select,button{
+select{
   width:100%;
   border-radius:14px;
   border:1px solid #cdbb9b;
   padding:12px 14px;
   font:inherit;
-}
-select{background:#fffdf7}
-.actions{display:flex;gap:12px;margin-top:14px}
-.actions > *{
-  flex:1 1 0;
+  background:#fffdf7;
 }
 button{
+  border-radius:14px;
+  border:1px solid #cdbb9b;
+  padding:12px 14px;
+  font:inherit;
   cursor:pointer;
   font-weight:700;
   transition:transform .15s ease,opacity .15s ease,background .15s ease;
 }
 button:hover{transform:translateY(-1px)}
 button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.actions{display:flex;gap:12px;margin-top:14px}
+.actions button{
+  flex:1 1 0;
+  width:auto;
+  min-width:0;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
 .primary{
   background:linear-gradient(135deg, #1c2d3d, #274b67);
   color:#fff;
@@ -280,13 +294,14 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   color:var(--ink);
 }
 .metric{
-  font-size:36px;
+  font-size:clamp(22px,3vw,32px);
   font-weight:700;
   line-height:1;
   margin:8px 0 4px;
+  word-break:break-word;
 }
 .score{
-  font-size:clamp(42px, 6vw, 76px);
+  font-size:clamp(40px, 5.5vw, 68px);
   line-height:.9;
   letter-spacing:-.06em;
   overflow-wrap:anywhere;
@@ -297,14 +312,15 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .stat-list{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
+  gap:10px;
 }
 .stat-item{
-  padding:14px;
+  padding:12px 14px;
   border:1px solid #d9cbb2;
   border-radius:16px;
   background:rgba(255,255,255,.56);
   min-width:0;
+  overflow:hidden;
 }
 .stat-item .muted{
   display:block;
@@ -312,17 +328,17 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   word-break:break-word;
 }
 .stat-item .metric{
-  font-size:clamp(22px, 3.5vw, 36px);
   word-break:break-word;
 }
 .score-breakdown{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+  gap:10px;
 }
 .score-caption{
-  margin:8px 0 14px;
+  margin:8px 0 12px;
   word-break:break-word;
+  font-size:14px;
 }
 .progress{
   width:100%;
@@ -362,15 +378,22 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .chain{
   display:flex;
   gap:10px;
-  overflow:auto;
-  padding-bottom:4px;
+  overflow-x:auto;
+  padding-bottom:8px;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(0,0,0,.12) transparent;
 }
+.chain::-webkit-scrollbar{height:4px}
+.chain::-webkit-scrollbar-thumb{background:rgba(0,0,0,.14);border-radius:999px}
 .chain-node{
-  min-width:150px;
+  flex:none;
+  min-width:130px;
+  max-width:180px;
   border:1px solid #d8c7a8;
-  border-radius:18px;
+  border-radius:16px;
   padding:12px;
   background:#fff9ef;
+  word-break:break-word;
 }
 .queue{
   display:grid;
@@ -430,18 +453,20 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .banner.success{display:block;background:#e7f3eb;border-color:#b8d0c1}
 .banner.error{display:block;background:#fae9e7;border-color:#dbb2ae}
 @media (max-width: 1180px){
-  .bottom-grid{grid-template-columns:1fr}
   .mid-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width: 980px){
   .hero,.top-grid,.hero-strip{grid-template-columns:1fr}
   h1{font-size:52px}
 }
-@media (max-width: 600px){
+@media (max-width: 820px){
+  .bottom-grid{grid-template-columns:1fr}
+}
+@media (max-width: 640px){
   .controls{grid-template-columns:1fr}
   .actions{flex-direction:column}
   .mid-grid{grid-template-columns:1fr}
-  .stat-list,.score-breakdown{grid-template-columns:1fr}
+  .stat-list{grid-template-columns:1fr}
   h1{font-size:38px}
 }
 </style>
