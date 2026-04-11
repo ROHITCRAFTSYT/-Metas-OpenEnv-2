@@ -72,7 +72,7 @@ h1{
 .chip strong{color:var(--text);font-weight:700}
 
 .hero{
-  display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,.95fr);gap:18px;margin-bottom:18px
+  display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,.95fr);gap:18px;margin-bottom:18px
 }
 .hero-card,.control-card,.panel{
   background:linear-gradient(180deg, rgba(15,29,42,.96), rgba(9,19,29,.92));
@@ -153,7 +153,7 @@ select:focus{border-color:rgba(79,140,255,.5)}
 .banner.bs{color:#cbffe9;border-color:rgba(76,208,142,.25);background:rgba(76,208,142,.12)}
 .banner.be{color:#ffd6db;border-color:rgba(255,107,125,.25);background:rgba(255,107,125,.12)}
 
-.main-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:18px}
+.main-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:18px}
 .stack{display:grid;gap:18px}
 .panel{padding:22px}
 .panel-header{
@@ -460,6 +460,7 @@ function qs(id){ return document.getElementById(id); }
 function titleize(value){
   return (value || '').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
 }
+function esc(s){ const d=document.createElement('div');d.textContent=String(s);return d.innerHTML; }
 function ts(){ return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
 
 function log(msg, cls){
@@ -468,7 +469,7 @@ function log(msg, cls){
   if (el.textContent.includes('Waiting for the environment')) {
     el.innerHTML = '';
   }
-  el.innerHTML += `<div class="log-row"><span class="ts">[${ts()}]</span> <span class="${kind}">${msg}</span></div>`;
+  el.innerHTML += `<div class="log-row"><span class="ts">[${ts()}]</span> <span class="${kind}">${esc(msg)}</span></div>`;
   el.scrollTop = el.scrollHeight;
 }
 
