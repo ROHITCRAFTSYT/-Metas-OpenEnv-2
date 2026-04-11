@@ -172,7 +172,7 @@ h1{
 .dot.live{background:var(--good)}
 .top-grid{
   display:grid;
-  grid-template-columns:repeat(3,minmax(220px,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:16px;
   margin-bottom:16px;
 }
@@ -193,7 +193,7 @@ h1{
 }
 .mid-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:14px;
 }
 .task-card{
@@ -234,14 +234,14 @@ h1{
 .pill.live{background:#ddeee7;color:#165f4a}
 .bottom-grid{
   display:grid;
-  grid-template-columns:minmax(0,1.35fr) minmax(320px,.8fr);
+  grid-template-columns:minmax(0,1.35fr) minmax(0,.8fr);
   gap:16px;
   align-items:start;
 }
 .stack{display:grid;gap:16px}
 .controls{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  grid-template-columns:1fr 1fr;
   gap:14px;
   margin-top:8px;
 }
@@ -296,7 +296,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .bad{color:var(--bad)}
 .stat-list{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:12px;
 }
 .stat-item{
@@ -305,24 +305,24 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   border-radius:16px;
   background:rgba(255,255,255,.56);
   min-width:0;
-  overflow:hidden;
 }
 .stat-item .muted{
   display:block;
-  overflow-wrap:anywhere;
+  font-size:12px;
+  word-break:break-word;
 }
 .stat-item .metric{
-  font-size:clamp(28px, 4vw, 36px);
-  overflow-wrap:anywhere;
+  font-size:clamp(22px, 3.5vw, 36px);
+  word-break:break-word;
 }
 .score-breakdown{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:12px;
 }
 .score-caption{
   margin:8px 0 14px;
-  overflow-wrap:anywhere;
+  word-break:break-word;
 }
 .progress{
   width:100%;
@@ -374,7 +374,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 }
 .queue{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
   gap:12px;
 }
 .alert{
@@ -430,14 +430,19 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .banner.success{display:block;background:#e7f3eb;border-color:#b8d0c1}
 .banner.error{display:block;background:#fae9e7;border-color:#dbb2ae}
 @media (max-width: 1180px){
-  .bottom-grid{
-    grid-template-columns:1fr;
-  }
+  .bottom-grid{grid-template-columns:1fr}
+  .mid-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width: 980px){
   .hero,.top-grid,.hero-strip{grid-template-columns:1fr}
-  .actions{flex-direction:column}
   h1{font-size:52px}
+}
+@media (max-width: 600px){
+  .controls{grid-template-columns:1fr}
+  .actions{flex-direction:column}
+  .mid-grid{grid-template-columns:1fr}
+  .stat-list,.score-breakdown{grid-template-columns:1fr}
+  h1{font-size:38px}
 }
 </style>
 </head>
@@ -526,7 +531,7 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 
     <div class="bottom-grid">
       <div class="stack">
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card">
           <h2>Launch Evaluation</h2>
           <div class="controls">
             <div>
@@ -555,12 +560,12 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
           </div>
         </div>
 
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card">
           <h2>Episode State</h2>
           <div id="statePanel" class="empty">Start an episode to load state, step budget, and classification progress.</div>
         </div>
 
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card">
           <h2>Alert Queue</h2>
           <div id="alertPanel" class="empty">The active queue will appear here once an episode starts.</div>
         </div>
@@ -572,12 +577,12 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
       </div>
 
       <div class="stack">
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card">
           <h2>Grader Result</h2>
           <div id="scorePanel" class="empty">Run the heuristic agent to see the final score and breakdown.</div>
         </div>
 
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card">
           <h2>Reward Trace</h2>
           <div id="rewardPanel" class="empty">Reward bars appear after the baseline run.</div>
         </div>
@@ -597,11 +602,12 @@ let stepRewards = [];
 
 function q(id){ return document.getElementById(id); }
 function titleize(v){ return (v || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
+function esc(s){ const d=document.createElement('div');d.textContent=String(s);return d.innerHTML; }
 function log(msg){
   const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
   const box = q('logBox');
   if (box.textContent.includes('waiting for launch')) box.textContent = '';
-  box.innerHTML += `[${now}] ${msg}<br>`;
+  box.innerHTML += `[${now}] ${esc(msg)}<br>`;
   box.scrollTop = box.scrollHeight;
 }
 function showBanner(message, type){
