@@ -377,23 +377,41 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
 .reward-bar.neg{background:linear-gradient(180deg,#c58a8a,#bb4e4e)}
 .chain{
   display:flex;
-  gap:10px;
+  align-items:stretch;
+  gap:0;
   overflow-x:auto;
-  padding-bottom:8px;
+  padding-bottom:6px;
   scrollbar-width:thin;
   scrollbar-color:rgba(0,0,0,.12) transparent;
 }
 .chain::-webkit-scrollbar{height:4px}
 .chain::-webkit-scrollbar-thumb{background:rgba(0,0,0,.14);border-radius:999px}
 .chain-node{
-  flex:none;
-  min-width:130px;
-  max-width:180px;
+  flex:1 1 0;
+  min-width:140px;
+  max-width:240px;
   border:1px solid #d8c7a8;
-  border-radius:16px;
-  padding:12px;
+  border-right:none;
+  padding:14px 16px;
   background:#fff9ef;
   word-break:break-word;
+  position:relative;
+}
+.chain-node:first-child{border-radius:14px 0 0 14px}
+.chain-node:last-child{border-right:1px solid #d8c7a8;border-radius:0 14px 14px 0}
+.chain-node.cn-tp{background:#fdf0f0;border-color:#e8b8b8}
+.chain-node.cn-fp{background:#f0faf4;border-color:#b8d8c4}
+.chain-node.cn-btp{background:#fef8ee;border-color:#e0c888}
+.chain-arrow{
+  display:flex;
+  align-items:center;
+  padding:0 4px;
+  color:#c0aa88;
+  font-size:18px;
+  flex:none;
+  background:#fffaf2;
+  border-top:1px solid #d8c7a8;
+  border-bottom:1px solid #d8c7a8;
 }
 .queue-wrap{
   border:1px solid #d8c7a8;
@@ -649,10 +667,6 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
           <div id="alertPanel" class="empty">The active queue will appear here once an episode starts.</div>
         </div>
 
-        <div class="card">
-          <h2>Kill Chain View</h2>
-          <div id="chainPanel" class="empty">Correlated scenarios will render a simple chain view here.</div>
-        </div>
       </div>
 
       <div class="stack">
@@ -671,6 +685,11 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
           <div id="logBox" class="log">[system] waiting for launch...</div>
         </div>
       </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>Kill Chain View</h2>
+      <div id="chainPanel" class="empty">Correlated scenarios will render a linked chain view here.</div>
     </div>
   </div>
 </div>
@@ -770,12 +789,21 @@ function renderAlerts(alerts){
 }
 
 function renderChain(alerts){
-  if (!alerts || alerts.length <= 1) return '<div class="empty">Single-alert tasks do not render a chain.</div>';
-  return `<div class="chain">${alerts.map(alert => `
-    <div class="chain-node">
-      <strong>${(alert.title || 'Alert').substring(0, 28)}</strong>
-      <div class="muted">${clsKey(alert.classification)}</div>
-    </div>`).join('<div style="align-self:center;color:#b39d74;">&rarr;</div>')}</div>`;
+  if (!alerts || alerts.length <= 1) return '<div class="empty">Single-alert tasks do not render a chain. Run a multi-alert scenario to see the linked view.</div>';
+  const parts = [];
+  alerts.forEach((alert, i) => {
+    const cc = clsCode(alert.classification);
+    const nodeClass = cc === 'tp' ? 'cn-tp' : cc === 'fp' ? 'cn-fp' : cc === 'btp' ? 'cn-btp' : '';
+    const sc = sevCode(alert.severity);
+    parts.push(`<div class="chain-node ${nodeClass}">
+      <div class="q-sev ${sc}" style="font-size:10px;margin-bottom:4px">${(alert.severity||'INFO').toUpperCase()}</div>
+      <strong style="font-size:13px;line-height:1.35;display:block">${esc(alert.title||'Alert')}</strong>
+      <div class="muted" style="font-size:12px;margin-top:5px">${esc(alert.source_system||'')}</div>
+      <span class="q-cls ${cc}" style="margin-top:8px;display:inline-block">${clsKey(alert.classification)}</span>
+    </div>`);
+    if (i < alerts.length - 1) parts.push('<div class="chain-arrow">&rarr;</div>');
+  });
+  return `<div class="chain">${parts.join('')}</div>`;
 }
 
 function renderRewards(rewards){
