@@ -395,38 +395,92 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   background:#fff9ef;
   word-break:break-word;
 }
-.queue{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-  gap:12px;
-}
-.alert{
+.queue-wrap{
   border:1px solid #d8c7a8;
-  border-radius:18px;
-  padding:14px;
+  border-radius:16px;
+  overflow:hidden;
+}
+.queue-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:8px 14px;
+  background:#ede3cf;
+  border-bottom:1px solid #d8c7a8;
+  font-size:11px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:#7a6a57;
+}
+.queue-hdr{
+  display:grid;
+  grid-template-columns:2.5fr 1.2fr 0.7fr 1.4fr;
+  gap:8px;
+  padding:8px 14px 8px 18px;
+  background:#f5edde;
+  border-bottom:1px solid #ddd0b8;
+  font-size:11px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:#8a7560;
+  position:sticky;
+  top:0;
+}
+.queue-scroll{
+  max-height:360px;
+  overflow-y:auto;
+  scrollbar-width:thin;
+  scrollbar-color:#d0c0a2 transparent;
+}
+.queue-scroll::-webkit-scrollbar{width:5px}
+.queue-scroll::-webkit-scrollbar-thumb{background:#d0c0a2;border-radius:999px}
+.queue-row{
+  display:grid;
+  grid-template-columns:2.5fr 1.2fr 0.7fr 1.4fr;
+  gap:8px;
+  align-items:center;
+  padding:9px 14px 9px 18px;
+  border-bottom:1px solid #ede6d8;
   background:#fffaf2;
   position:relative;
+  transition:background .12s;
+  font-size:13px;
 }
-.alert::before{
+.queue-row:last-child{border-bottom:none}
+.queue-row:hover{background:#fff5e6}
+.queue-row::before{
   content:"";
   position:absolute;
-  left:0;
-  top:14px;
-  bottom:14px;
+  left:0;top:0;bottom:0;
   width:4px;
+  background:#ccc0a8;
+}
+.queue-row.sc::before{background:#bb4e4e}
+.queue-row.sh::before{background:#c96d43}
+.queue-row.sm::before{background:#b87a1d}
+.queue-row.sl::before{background:#275d7e}
+.queue-row.si::before{background:#8a9baa}
+.q-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#18222d}
+.q-src{color:#5f6f7e;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-sev{font-size:11px;font-weight:700;letter-spacing:.05em}
+.q-sev.sc{color:#bb4e4e}
+.q-sev.sh{color:#c96d43}
+.q-sev.sm{color:#b87a1d}
+.q-sev.sl{color:#275d7e}
+.q-sev.si{color:#8a9baa}
+.q-cls{
+  display:inline-block;
+  padding:3px 9px;
   border-radius:999px;
-  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  font-size:11px;
+  font-weight:600;
+  white-space:nowrap;
+  background:#efe3ca;
+  color:#6f624d;
 }
-.alert > *{margin-left:10px}
-.alert strong,.alert .mono,.alert .muted{
-  overflow-wrap:anywhere;
-}
-.alert-top{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin:10px 0 8px;
-}
+.q-cls.tp{background:#fde8e8;color:#883333}
+.q-cls.fp{background:#e7f3eb;color:#165f4a}
+.q-cls.btp{background:#fef3e2;color:#7a4a10}
 .log{
   background:linear-gradient(180deg, #161d25, #12171e);
   color:#dce7ef;
@@ -675,18 +729,44 @@ function renderState(state){
   <div class="progress"><div style="width:${progress}%"></div></div>`;
 }
 
+function sevCode(sev){
+  const s = (sev || 'info').toLowerCase();
+  if (s === 'critical') return 'sc';
+  if (s === 'high') return 'sh';
+  if (s === 'medium') return 'sm';
+  if (s === 'low') return 'sl';
+  return 'si';
+}
+function clsCode(cls){
+  const v = (cls || '').toLowerCase().replace(/ /g,'_');
+  if (v === 'true_positive') return 'tp';
+  if (v === 'false_positive') return 'fp';
+  if (v === 'benign_true_positive') return 'btp';
+  return '';
+}
 function renderAlerts(alerts){
   if (!alerts || !alerts.length) return '<div class="empty">No alerts available.</div>';
-  return `<div class="queue">${alerts.map(alert => `
-    <div class="alert">
-      <strong>${alert.title || 'Untitled Alert'}</strong>
-      <div class="alert-top">
-        <span class="pill">${(alert.severity || 'info').toUpperCase()}</span>
-        <span class="pill">${clsKey(alert.classification)}</span>
-      </div>
-      <div class="muted">${alert.source_system || 'Unknown Source'}</div>
-      <div class="mono" style="margin-top:8px;">${alert.alert_id || ''}</div>
-    </div>`).join('')}</div>`;
+  const sorted = [...alerts].sort((a,b) => {
+    const order = {critical:0,high:1,medium:2,low:3,info:4};
+    return (order[(a.severity||'info').toLowerCase()]||4) - (order[(b.severity||'info').toLowerCase()]||4);
+  });
+  const rows = sorted.map(a => {
+    const sc = sevCode(a.severity);
+    const cc = clsCode(a.classification);
+    const sev = (a.severity || 'info').toUpperCase();
+    const cls = clsKey(a.classification);
+    return `<div class="queue-row ${sc}">
+      <div class="q-title" title="${esc(a.title||'')}">${esc(a.title||'Untitled Alert')}</div>
+      <div class="q-src">${esc(a.source_system||'—')}</div>
+      <div class="q-sev ${sc}">${sev}</div>
+      <span class="q-cls ${cc}">${cls}</span>
+    </div>`;
+  }).join('');
+  return `<div class="queue-wrap">
+    <div class="queue-meta"><span>${alerts.length} alert${alerts.length !== 1 ? 's' : ''}</span><span>sorted by severity</span></div>
+    <div class="queue-hdr"><span>Alert</span><span>Source</span><span>Sev</span><span>Classification</span></div>
+    <div class="queue-scroll">${rows}</div>
+  </div>`;
 }
 
 function renderChain(alerts){
