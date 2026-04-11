@@ -336,10 +336,11 @@ def mcp_endpoint(request: Optional[dict] = Body(default=None)):
             return _jsonrpc_err(-32601, f"Unknown tool: '{tool_name}'")
 
         except ValueError as e:
-            return _jsonrpc_err(-32602, f"Invalid params: {e}")
-        except Exception as e:
+            logger.warning("MCP tools/call invalid params: %s", e)
+            return _jsonrpc_err(-32602, "Invalid params")
+        except Exception:
             logger.exception("MCP tools/call error")
-            return _jsonrpc_err(-32603, f"Internal error: {e}")
+            return _jsonrpc_err(-32603, "Internal error")
 
     # -- unknown method -------------------------------------------------------
     return _jsonrpc_err(-32601, f"Unknown method: '{method}'")
