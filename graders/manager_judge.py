@@ -135,13 +135,17 @@ Default to 0.5 when uncertain. A score of 1.0 should be rare."""
         base_url = os.environ.get("API_BASE_URL")
         model = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
-        client_kwargs: dict = {}
-        if api_key:
-            client_kwargs["api_key"] = api_key
+        if not api_key:
+            raise RuntimeError("No HF_TOKEN or OPENAI_API_KEY available; using heuristic fallback.")
+
+        client_kwargs: dict = {"api_key": api_key}
         if base_url:
             client_kwargs["base_url"] = base_url
 
-        client = openai.OpenAI(**client_kwargs)
+        try:
+            client = openai.OpenAI(**client_kwargs)
+        except Exception as exc:
+            raise RuntimeError(f"OpenAI client init failed: {exc}")
 
         investigation_summary = self._build_investigation_summary(
             investigations, config

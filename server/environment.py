@@ -159,6 +159,7 @@ class SOCEnvironment:
         self._containment_results = []
         self._manager_review = None
         self._escalated_alert_ids = []
+        self._prev_team_shared = 0.0
         self._tier1_reward = 0.0
         self._tier2_reward = 0.0
         self._manager_reward = 0.0
@@ -231,7 +232,9 @@ class SOCEnvironment:
         team_shared_reward = 0.0
         if self._mode == EpisodeMode.TEAM and acting_role is not None:
             team_shared_reward, _, _ = compute_team_metrics(self._config, self._investigations)
-            step_reward = (0.6 * role_specific_reward) + (0.4 * team_shared_reward) + loop_penalty
+            team_shared_delta = team_shared_reward - self._prev_team_shared
+            self._prev_team_shared = team_shared_reward
+            step_reward = (0.6 * role_specific_reward) + (0.4 * team_shared_delta) + loop_penalty
         else:
             step_reward = role_specific_reward + loop_penalty
         if loop_penalty < 0:
@@ -353,6 +356,16 @@ class SOCEnvironment:
     def _advance_phase(self, current_role: Optional[AgentRole]) -> SOCObservation:
         """Advance to the next episode phase and return updated observation."""
         if self._phase == EpisodePhase.TRIAGE:
+            if len(self._escalated_alert_ids) == 0:
+                self._phase = EpisodePhase.COMPLETE
+                self._cumulative_reward += -0.10
+                msg = (
+                    "Triage phase complete with zero escalations — no work for Tier-2/Manager. "
+                    "Episode short-circuited with -0.10 penalty."
+                )
+                finalize = self._finalize_team_episode()
+                finalize.message = msg + " | " + finalize.message
+                return finalize
             self._phase = EpisodePhase.RESPONSE
             self._phase_step = 0
             budget = _PHASE_BUDGETS[EpisodePhase.RESPONSE]
@@ -678,7 +691,8 @@ class SOCEnvironment:
         # Enforce over-escalation penalty: if >30% of alerts escalated by T1, penalise
         escalated_count = len(self._escalated_alert_ids)
         total_alerts = len(self._config.alerts)
-        if escalated_count / max(total_alerts, 1) >= 0.30 and alert_id not in self._escalated_alert_ids:
+        prospective_count = escalated_count + (1 if alert_id not in self._escalated_alert_ids else 0)
+        if prospective_count / max(total_alerts, 1) > 0.25 and alert_id not in self._escalated_alert_ids:
             penalty = -0.08
         else:
             penalty = 0.0

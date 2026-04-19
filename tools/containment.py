@@ -260,6 +260,9 @@ def close_case(
     resolution: str,
 ) -> tuple[ContainmentResult, float, str]:
     """Record case closure with a resolution note."""
+    already_closed = any(
+        entry.startswith("Case closed:") for entry in inv.evidence_timeline
+    )
     inv.evidence_timeline.append(f"Case closed: {resolution}")
 
     result = ContainmentResult(
@@ -269,5 +272,8 @@ def close_case(
         details=f"Case {alert_id} closed. Resolution: {resolution}",
         evidence=[],
     )
+    if already_closed:
+        msg = f"Case '{alert_id}' already closed — duplicate close_case penalized."
+        return result, -0.02, msg
     msg = f"Case '{alert_id}' closed with resolution: {resolution}"
     return result, 0.05, msg

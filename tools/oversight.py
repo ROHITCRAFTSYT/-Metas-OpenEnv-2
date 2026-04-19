@@ -139,7 +139,7 @@ def flag_inconsistency(
         finding = f"Flagged: {flag_reason}"
         msg = f"Legitimate inconsistency flagged on alert '{alert_id}'."
     else:
-        reward = -0.05
+        reward = -0.15
         inconsistency_found = False
         finding = f"Flagged: {flag_reason}"
         msg = f"Spurious flag on alert '{alert_id}' — not in expected manager flags."

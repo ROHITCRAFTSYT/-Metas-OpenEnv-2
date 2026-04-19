@@ -200,8 +200,10 @@ def build_prompt_dataset(
     role: str,
 ) -> List[dict]:
     """
-    Run oracle episodes, collect initial observations as prompts.
-    Returns list of {"prompt": str, "task_id": str, "seed": int}.
+    Legacy initial-observation dataset builder (one prompt per episode).
+
+    Kept for backward-compatibility with callers that expect a single prompt
+    per (task, seed). For real per-step GRPO training use `build_step_dataset`.
     """
     dataset = []
     for task_id in tasks:
@@ -210,17 +212,102 @@ def build_prompt_dataset(
                 reset_resp = client.post("/reset", json={"task_id": task_id, "seed": seed, "mode": "team"})
                 reset_resp.raise_for_status()
                 obs = reset_resp.json()
-                # Format initial observation as the LLM prompt
                 prompt = format_obs_prompt(obs, role, step=0)
                 dataset.append({
                     "prompt": [{"role": "system", "content": ROLE_SYSTEM_PROMPTS[role]},
                                {"role": "user",   "content": prompt}],
                     "task_id": task_id,
                     "seed": seed,
+                    "step_index": 0,
                 })
             except Exception as e:
                 print(f"  [WARN] Failed to generate prompt for {task_id} seed={seed}: {e}")
     return dataset
+
+
+def build_step_dataset(
+    client: httpx.Client,
+    tasks: List[str],
+    seeds: List[int],
+    role: str,
+    max_steps_per_episode: int = 80,
+) -> List[dict]:
+    """
+    Per-step dataset builder for real per-step GRPO.
+
+    Runs oracle rollouts and records every observation where acting role ==
+    `role`. Each dataset row is a single (prompt, task_id, seed, step_index)
+    tuple; the reward function replays oracle actions up to `step_index`
+    to reproduce the exact state before applying the model's action.
+
+    Returns list of {"prompt": chat-messages, "task_id": str, "seed": int,
+                     "step_index": int}.
+    """
+    dataset = []
+    for task_id in tasks:
+        for seed in seeds:
+            try:
+                reset_resp = client.post(
+                    "/reset", json={"task_id": task_id, "seed": seed, "mode": "team"}
+                )
+                reset_resp.raise_for_status()
+                obs = reset_resp.json()
+
+                step = 0
+                while not obs.get("done", False) and step < max_steps_per_episode:
+                    acting_role = obs.get("current_role") or "tier1"
+                    if acting_role == role:
+                        prompt = format_obs_prompt(obs, role, step=step)
+                        dataset.append({
+                            "prompt": [
+                                {"role": "system", "content": ROLE_SYSTEM_PROMPTS[role]},
+                                {"role": "user",   "content": prompt},
+                            ],
+                            "task_id": task_id,
+                            "seed": seed,
+                            "step_index": step,
+                        })
+                    step += 1
+                    action = oracle_action(obs)
+                    step_resp = client.post(
+                        "/step",
+                        content=json.dumps(action),
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if step_resp.status_code != 200:
+                        break
+                    obs = step_resp.json()
+            except Exception as e:
+                print(f"  [WARN] Failed step-dataset build for {task_id} seed={seed}: {e}")
+    return dataset
+
+
+def replay_to_step(
+    client: httpx.Client,
+    task_id: str,
+    seed: int,
+    step_index: int,
+    max_steps_per_episode: int = 80,
+) -> dict:
+    """Reset env and run oracle until reaching `step_index`. Returns that obs."""
+    reset_resp = client.post(
+        "/reset", json={"task_id": task_id, "seed": seed, "mode": "team"}
+    )
+    reset_resp.raise_for_status()
+    obs = reset_resp.json()
+    step = 0
+    while step < step_index and not obs.get("done", False) and step < max_steps_per_episode:
+        action = oracle_action(obs)
+        step_resp = client.post(
+            "/step",
+            content=json.dumps(action),
+            headers={"Content-Type": "application/json"},
+        )
+        if step_resp.status_code != 200:
+            break
+        obs = step_resp.json()
+        step += 1
+    return obs
 
 
 def format_obs_prompt(obs: dict, role: str, step: int) -> str:
@@ -252,30 +339,59 @@ def format_obs_prompt(obs: dict, role: str, step: int) -> str:
 
 def make_reward_fn(client: httpx.Client, role: str):
     """
-    Returns a reward function compatible with TRL GRPOTrainer.
+    Real per-step GRPO reward function.
 
-    Signature: (prompts, completions, **kwargs) -> List[float]
+    Each training example is one (observation, step_index) pair produced by
+    `build_step_dataset`. For each group-sampled completion we:
+      1. Parse the action from the model's text.
+      2. Reset the env to (task_id, seed) and replay oracle actions up to
+         step_index — reaching the same state the prompt was drawn from.
+      3. Apply the model's action and use the env's immediate step reward.
+
+    This produces a genuine learning signal: reward reflects the model's
+    decision at that state, not a full-episode rollout dominated by the
+    scripted oracle.
     """
     def reward_fn(prompts, completions, **kwargs):
         rewards = []
         task_ids = kwargs.get("task_id", ["team_phishing_escalation"] * len(completions))
         seeds = kwargs.get("seed", [42] * len(completions))
+        step_indices = kwargs.get("step_index", [0] * len(completions))
 
         for i, completion in enumerate(completions):
             text = completion[0]["content"] if isinstance(completion, list) else completion
-            try:
-                # Parse the action from the model's response
-                action = parse_action_from_text(text, role)
-                actions = [action] if action else []
+            task_id = task_ids[i] if i < len(task_ids) else "team_phishing_escalation"
+            seed = seeds[i] if i < len(seeds) else 42
+            step_index = step_indices[i] if i < len(step_indices) else 0
 
-                score, _ = run_episode(
-                    client,
-                    task_id=task_ids[i] if i < len(task_ids) else "team_phishing_escalation",
-                    seed=seeds[i] if i < len(seeds) else 42,
-                    model_actions=actions,
-                    role_to_train=role,
+            try:
+                action = parse_action_from_text(text, role)
+                if action is None:
+                    rewards.append(-0.05)
+                    continue
+
+                obs = replay_to_step(client, task_id, seed, step_index)
+                if obs.get("done", False):
+                    rewards.append(0.0)
+                    continue
+
+                # Guard against role mismatch: the replay may have advanced
+                # past the target role if the oracle completed the phase.
+                acting_role = obs.get("current_role") or "tier1"
+                if acting_role != role:
+                    rewards.append(-0.02)
+                    continue
+
+                step_resp = client.post(
+                    "/step",
+                    content=json.dumps(action),
+                    headers={"Content-Type": "application/json"},
                 )
-                rewards.append(float(score))
+                if step_resp.status_code != 200:
+                    rewards.append(-0.05)
+                    continue
+                stepped = step_resp.json()
+                rewards.append(float(stepped.get("reward", 0.0)))
             except Exception:
                 rewards.append(0.0)
         return rewards
@@ -360,10 +476,10 @@ def train(
         print("  Start the server first:  uvicorn server.app:app --port 7860")
         sys.exit(1)
 
-    # ---- Build prompt dataset ----
-    print(f"\n[1/4] Building prompt dataset ({len(SEEDS)} seeds × {len(tasks)} tasks)...")
-    raw_dataset = build_prompt_dataset(client, tasks, SEEDS, role)
-    print(f"      {len(raw_dataset)} prompts generated")
+    # ---- Build per-step prompt dataset (real GRPO) ----
+    print(f"\n[1/4] Building per-step dataset ({len(SEEDS)} seeds × {len(tasks)} tasks)...")
+    raw_dataset = build_step_dataset(client, tasks, SEEDS, role)
+    print(f"      {len(raw_dataset)} per-step prompts generated")
 
     # Shuffle and split 90/10
     random.shuffle(raw_dataset)
@@ -436,7 +552,8 @@ def train(
 
         hf_train = Dataset.from_list([{"prompt": d["prompt"],
                                         "task_id": d["task_id"],
-                                        "seed": d["seed"]} for d in train_data])
+                                        "seed": d["seed"],
+                                        "step_index": d.get("step_index", 0)} for d in train_data])
 
         grpo_config = GRPOConfig(
             output_dir=output_dir,
