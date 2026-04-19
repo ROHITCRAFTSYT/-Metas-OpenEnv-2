@@ -547,6 +547,7 @@ def train(
     print(f"\n[4/4] Starting GRPO training...")
 
     try:
+        import inspect
         from trl import GRPOConfig, GRPOTrainer
         from datasets import Dataset
 
@@ -555,7 +556,8 @@ def train(
                                         "seed": d["seed"],
                                         "step_index": d.get("step_index", 0)} for d in train_data])
 
-        grpo_config = GRPOConfig(
+        _grpo_params = set(inspect.signature(GRPOConfig.__init__).parameters)
+        config_kwargs: dict = dict(
             output_dir=output_dir,
             num_train_epochs=num_train_epochs,
             per_device_train_batch_size=per_device_train_batch_size,
@@ -568,11 +570,16 @@ def train(
             save_steps=50,
             report_to=["wandb"] if os.getenv("WANDB_API_KEY") else ["none"],
             run_name=f"soc-grpo-{role}",
-            # GRPO-specific
-            beta=0.04,           # KL penalty coefficient
-            temperature=1.0,     # sampling temperature during rollouts
+            temperature=1.0,
             seed=42,
         )
+        # KL penalty param renamed across TRL versions
+        if "beta" in _grpo_params:
+            config_kwargs["beta"] = 0.04
+        elif "kl_coef" in _grpo_params:
+            config_kwargs["kl_coef"] = 0.04
+
+        grpo_config = GRPOConfig(**config_kwargs)
 
         trainer = GRPOTrainer(
             model=model,
