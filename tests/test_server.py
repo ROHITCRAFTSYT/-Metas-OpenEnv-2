@@ -82,6 +82,14 @@ class TestResetEndpoint:
         resp = test_client.post("/reset", json={"task_id": "nonexistent", "seed": 42})
         assert resp.status_code == 400
 
+    def test_team_reset_endpoint(self, test_client):
+        """POST /reset with team mode returns a team-mode observation."""
+        resp = test_client.post("/reset", json={"task_id": "team_phishing_escalation", "seed": 42, "mode": "team"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["episode_mode"] == "team"
+        assert data["current_role"] == "tier1"
+
 
 class TestStepEndpoint:
     def test_step_endpoint(self, test_client):
@@ -129,6 +137,7 @@ class TestTasksEndpoint:
         assert "phishing" in task_ids
         assert "lateral_movement" in task_ids
         assert "queue_management" in task_ids
+        assert "team_phishing_escalation" in task_ids
 
     def test_tasks_single(self, test_client):
         """GET /tasks/{task_id} returns details for a single task."""
@@ -138,6 +147,14 @@ class TestTasksEndpoint:
         assert data["id"] == "phishing"
         assert data["difficulty"] == "easy"
         assert data["max_steps"] == 15
+
+    def test_team_task_single(self, test_client):
+        """GET /tasks/{task_id} returns details for a team task."""
+        resp = test_client.get("/tasks/team_phishing_escalation")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == "team_phishing_escalation"
+        assert data["max_steps"] == 68
 
     def test_tasks_not_found(self, test_client):
         """GET /tasks/{task_id} with invalid id returns 404."""
@@ -183,3 +200,14 @@ class TestLogsEndpoint:
         assert data["source"] == "email_gateway"
         assert data["count"] > 0
         assert len(data["entries"]) > 0
+
+
+class TestRound2Endpoints:
+    def test_generate_scenario_endpoint(self, test_client):
+        """POST /generate_scenario returns a valid generated scenario payload."""
+        resp = test_client.post("/generate_scenario", json={"seed": 42})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["task_id"] == "red_team_generated"
+        assert "alerts" in data
+        assert len(data["alerts"]) > 0

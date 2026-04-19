@@ -114,6 +114,8 @@ class PhishingGrader(BaseGrader):
             + 0.2 * response_score
         )
 
+        if final <= 0.0:
+            return 0.0
         return self._clamp(final)
 
     def grade_with_breakdown(self, config, investigations, steps_used, max_steps):
@@ -183,10 +185,11 @@ class PhishingGrader(BaseGrader):
             expected = set(expected_actions)
             response_score = len(recommended & expected) / len(expected) if expected else 1.0
 
-        final = self._clamp(
+        raw_final = (
             0.4 * classification_score + 0.2 * technique_score
             + 0.2 * evidence_score + 0.2 * response_score
         )
+        final = 0.0 if raw_final <= 0.0 else self._clamp(raw_final)
 
         feedback_parts = []
         if classification_score < 1.0:

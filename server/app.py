@@ -22,7 +22,7 @@ Thread safety: a single threading.Lock protects the SOCEnvironment instance.
 import logging
 import threading
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +32,8 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 from baseline_agent import HeuristicBaselineAgent
-from models import EnvironmentState, SOCAction, SOCObservation
+from models import AgentRole, EnvironmentState, RedTeamConfig, SOCAction, SOCObservation
+from scenarios.red_team_generator import RedTeamGenerator
 from server.landing_ui import UI_HTML
 from server.environment import SOCEnvironment
 
@@ -44,6 +45,65 @@ from server.environment import SOCEnvironment
 _env: Optional[SOCEnvironment] = None
 _env_lock = threading.Lock()
 _baseline_agent = HeuristicBaselineAgent()
+
+TASKS = [
+    {
+        "id": "phishing",
+        "name": "Single-Alert Phishing Triage",
+        "description": "Triage a single phishing email alert. Enrich IOCs, query logs, classify as TP or FP, map MITRE ATT&CK technique, recommend response.",
+        "difficulty": "easy",
+        "max_steps": 15,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "lateral_movement",
+        "name": "Multi-Alert Lateral Movement Kill Chain",
+        "description": "Investigate 5 correlated alerts forming a kill chain: phishing, credential dump, lateral movement, data staging, exfiltration.",
+        "difficulty": "medium",
+        "max_steps": 30,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "queue_management",
+        "name": "Alert Queue Management Under Noise",
+        "description": "Triage 20 mixed alerts: 5 true positives in 2 attack chains, 3 benign true positives, 12 false positives.",
+        "difficulty": "hard",
+        "max_steps": 60,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "insider_threat",
+        "name": "Insider Threat Investigation",
+        "description": "Investigate 30 alerts hiding 3 insider threat attack chains: unauthorized data theft, compromised vendor, disgruntled employee. 9 TPs, 5 BTPs, 16 FPs.",
+        "difficulty": "expert",
+        "max_steps": 80,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "team_phishing_escalation",
+        "name": "Team Phishing Escalation",
+        "description": "Tier-1 triages a phishing alert, escalates to Tier-2 for containment, and Manager audits the decision trail.",
+        "difficulty": "easy",
+        "max_steps": 68,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "team_lateral_team",
+        "name": "Team Lateral Movement",
+        "description": "Tier-1 triages a noisy lateral movement queue, Tier-2 responds to escalations, and Manager flags missed threats and inconsistencies.",
+        "difficulty": "medium",
+        "max_steps": 68,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "red_team_generated",
+        "name": "Generated Adversarial Scenario",
+        "description": "Execute the most recently generated red-team curriculum scenario.",
+        "difficulty": "adaptive",
+        "max_steps": 30,
+        "reward_range": [0.0, 1.0],
+    },
+]
 
 
 @asynccontextmanager
@@ -87,6 +147,19 @@ class ResetRequest(BaseModel):
     """Request body for POST /reset."""
     task_id: str = "phishing"
     seed: int = 42
+    mode: Literal["tier1_solo", "team"] = "tier1_solo"
+
+
+class GenerateScenarioRequest(BaseModel):
+    """Request body for POST /generate_scenario."""
+    seed: int = 42
+    difficulty_floor: float = 0.5
+    attack_patterns: List[str] = ["phishing", "lateral_movement", "insider_threat"]
+    noise_density: float = 0.6
+    ioc_freshness: float = 0.7
+    correlation_obfuscation: float = 0.3
+    blue_team_win_rate: float = 0.5
+    episode_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -111,9 +184,9 @@ def metadata():
             "indicators, querying log sources, correlating events, and classifying alerts "
             "with MITRE ATT&CK technique mapping."
         ),
-        "tasks": ["phishing", "lateral_movement", "queue_management", "insider_threat"],
+        "tasks": [task["id"] for task in TASKS],
         "author": "rohitcraftsyt",
-        "tags": ["openenv", "cybersecurity", "soc", "siem", "mitre-attack", "reinforcement-learning"],
+        "tags": ["openenv", "cybersecurity", "soc", "siem", "mitre-attack", "reinforcement-learning", "multi-agent", "oversight", "self-improvement"],
     }
 
 
@@ -159,8 +232,9 @@ def mcp_endpoint(request: Optional[dict] = Body(default=None)):
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "task_id": {"type": "string", "enum": ["phishing", "lateral_movement", "queue_management", "insider_threat"], "default": "phishing"},
+                    "task_id": {"type": "string", "enum": [task["id"] for task in TASKS], "default": "phishing"},
                     "seed": {"type": "integer", "default": 42},
+                    "mode": {"type": "string", "enum": ["tier1_solo", "team"], "default": "tier1_solo"},
                 },
             },
         },
@@ -293,6 +367,7 @@ def mcp_endpoint(request: Optional[dict] = Body(default=None)):
                     obs = _env.reset(
                         task_id=tool_args.get("task_id", "phishing"),
                         seed=tool_args.get("seed", 42),
+                        mode=tool_args.get("mode", "tier1_solo"),
                     )
                     return _jsonrpc_ok({"content": [{"type": "text", "text": obs.model_dump_json()}]})
 
@@ -361,7 +436,7 @@ def reset(request: Optional[ResetRequest] = Body(default=None)):
     req = request or ResetRequest()
     with _env_lock:
         try:
-            obs = _env.reset(task_id=req.task_id, seed=req.seed)
+            obs = _env.reset(task_id=req.task_id, seed=req.seed, mode=req.mode)
             return obs
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -435,42 +510,7 @@ def _ensure_episode():
 @app.get("/tasks")
 def get_tasks():
     """List all available tasks (OpenEnv spec endpoint)."""
-    return {
-        "tasks": [
-            {
-                "id": "phishing",
-                "name": "Single-Alert Phishing Triage",
-                "description": "Triage a single phishing email alert. Enrich IOCs, query logs, classify as TP or FP, map MITRE ATT&CK technique, recommend response.",
-                "difficulty": "easy",
-                "max_steps": 15,
-                "reward_range": [0.0, 1.0],
-            },
-            {
-                "id": "lateral_movement",
-                "name": "Multi-Alert Lateral Movement Kill Chain",
-                "description": "Investigate 5 correlated alerts forming a kill chain: phishing, credential dump, lateral movement, data staging, exfiltration.",
-                "difficulty": "medium",
-                "max_steps": 30,
-                "reward_range": [0.0, 1.0],
-            },
-            {
-                "id": "queue_management",
-                "name": "Alert Queue Management Under Noise",
-                "description": "Triage 20 mixed alerts: 5 true positives in 2 attack chains, 3 benign true positives, 12 false positives.",
-                "difficulty": "hard",
-                "max_steps": 60,
-                "reward_range": [0.0, 1.0],
-            },
-            {
-                "id": "insider_threat",
-                "name": "Insider Threat Investigation",
-                "description": "Investigate 30 alerts hiding 3 insider threat attack chains: unauthorized data theft, compromised vendor, disgruntled employee. 9 TPs, 5 BTPs, 16 FPs.",
-                "difficulty": "expert",
-                "max_steps": 80,
-                "reward_range": [0.0, 1.0],
-            },
-        ]
-    }
+    return {"tasks": TASKS}
 
 
 @app.post("/grader")
@@ -511,13 +551,13 @@ def baseline(request: Optional[ResetRequest] = Body(default=None)):
     with _env_lock:
         try:
             # Reset to a fresh episode
-            _env.reset(task_id=req.task_id, seed=req.seed)
+            _env.reset(task_id=req.task_id, seed=req.seed, mode=req.mode)
             _baseline_agent.reset()
             # Run heuristic steps until done
             steps = 0
             max_steps = _env._config.max_steps if _env._config else 0
             while not _env._done and steps < max_steps:
-                obs = _env._build_observation(reward=0.0)
+                obs = _env._build_observation(role=_env._current_role(), reward=0.0)
                 action = SOCAction(**_baseline_agent.next_action(obs.model_dump()))
                 _env.step(action)
                 steps += 1
@@ -562,48 +602,7 @@ def _heuristic_baseline_action(env: "SOCEnvironment") -> SOCAction:
 @app.get("/tasks/{task_id}")
 def get_task(task_id: str):
     """Get details for a single task by ID."""
-    tasks = {
-        "phishing": {
-            "id": "phishing",
-            "name": "Single-Alert Phishing Triage",
-            "description": "Triage a single phishing email alert. Enrich IOCs, query logs, classify as TP or FP, map MITRE ATT&CK technique, recommend response.",
-            "difficulty": "easy",
-            "max_steps": 15,
-            "reward_range": [0.0, 1.0],
-            "num_alerts": 1,
-            "grader_weights": {"classification": 0.4, "technique_mapping": 0.2, "evidence": 0.2, "response": 0.2},
-        },
-        "lateral_movement": {
-            "id": "lateral_movement",
-            "name": "Multi-Alert Lateral Movement Kill Chain",
-            "description": "Investigate 5 correlated alerts forming a kill chain: phishing, credential dump, lateral movement, data staging, exfiltration.",
-            "difficulty": "medium",
-            "max_steps": 30,
-            "reward_range": [0.0, 1.0],
-            "num_alerts": 5,
-            "grader_weights": {"classification": 0.3, "technique_mapping": 0.2, "kill_chain": 0.2, "response": 0.2, "efficiency": 0.1},
-        },
-        "queue_management": {
-            "id": "queue_management",
-            "name": "Alert Queue Management Under Noise",
-            "description": "Triage 20 mixed alerts: 5 true positives in 2 attack chains, 3 benign true positives, 12 false positives.",
-            "difficulty": "hard",
-            "max_steps": 60,
-            "reward_range": [0.0, 1.0],
-            "num_alerts": 20,
-            "grader_weights": {"f1_score": 0.3, "attack_chains": 0.2, "tp_coverage": 0.2, "efficiency": 0.15, "response": 0.15},
-        },
-        "insider_threat": {
-            "id": "insider_threat",
-            "name": "Insider Threat Investigation",
-            "description": "Investigate 30 alerts hiding 3 insider threat attack chains: unauthorized data theft, compromised vendor, disgruntled employee. 9 TPs, 5 BTPs, 16 FPs.",
-            "difficulty": "expert",
-            "max_steps": 80,
-            "reward_range": [0.0, 1.0],
-            "num_alerts": 30,
-            "grader_weights": {"f1_score": 0.25, "attack_chains": 0.25, "tp_coverage": 0.20, "efficiency": 0.15, "response": 0.15},
-        },
-    }
+    tasks = {task["id"]: task for task in TASKS}
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found. Valid: {list(tasks.keys())}")
     return tasks[task_id]
@@ -612,38 +611,39 @@ def get_task(task_id: str):
 @app.get("/api/tasks")
 def list_tasks():
     """List all available tasks and their configuration."""
-    return {
-        "tasks": [
-            {
-                "id": "phishing",
-                "description": "Investigate a single phishing alert. Determine TP vs FP.",
-                "difficulty": "easy",
-                "max_steps": 15,
-                "num_alerts": 1,
-            },
-            {
-                "id": "lateral_movement",
-                "description": "Investigate 5-alert lateral movement kill chain.",
-                "difficulty": "medium",
-                "max_steps": 30,
-                "num_alerts": 5,
-            },
-            {
-                "id": "queue_management",
-                "description": "Triage queue of 20 mixed alerts — surface real attacks, dismiss noise.",
-                "difficulty": "hard",
-                "max_steps": 60,
-                "num_alerts": 20,
-            },
-            {
-                "id": "insider_threat",
-                "description": "Investigate 30 alerts with 3 insider threat chains hidden in heavy SOC noise.",
-                "difficulty": "expert",
-                "max_steps": 80,
-                "num_alerts": 30,
-            },
-        ]
-    }
+    return {"tasks": TASKS}
+
+
+@app.post("/generate_scenario")
+def generate_scenario(request: Optional[GenerateScenarioRequest] = Body(default=None)):
+    """Generate and load an adaptive red-team scenario for reset(task_id='red_team_generated')."""
+    req = request or GenerateScenarioRequest()
+    rt_config = RedTeamConfig(
+        difficulty_floor=req.difficulty_floor,
+        attack_patterns=req.attack_patterns,
+        noise_density=req.noise_density,
+        ioc_freshness=req.ioc_freshness,
+        correlation_obfuscation=req.correlation_obfuscation,
+        blue_team_win_rate=req.blue_team_win_rate,
+        episode_count=req.episode_count,
+    )
+    scenario = RedTeamGenerator(config=rt_config, seed=req.seed).generate()
+    with _env_lock:
+        _env.set_generated_scenario(scenario)
+    return scenario.model_dump()
+
+
+@app.get("/inbox/{role}")
+def inbox(role: str):
+    """Debug endpoint to inspect role-filtered tickets in the current episode."""
+    with _env_lock:
+        _ensure_episode()
+        try:
+            parsed_role = AgentRole(role)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        obs = _env._build_observation(role=parsed_role, reward=0.0)
+        return {"role": role, "tickets": [ticket.model_dump() for ticket in obs.tickets]}
 
 
 @app.get("/api/alerts")
