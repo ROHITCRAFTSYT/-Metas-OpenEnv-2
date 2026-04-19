@@ -4,8 +4,8 @@ description: >
   A reinforcement learning environment simulating a Security Operations Center (SOC) analyst.
   An AI agent receives SIEM alerts and must enrich threat indicators, query log sources,
   correlate events across alerts, classify alerts as TP/FP/BTP, map findings to MITRE ATT&CK,
-  and recommend containment actions. Simulates realistic SOC conditions with 75-95% false
-  positive rates, multi-stage attacks hidden in noise, and information asymmetry.
+  and recommend containment actions. Round 2 adds team-mode episodes with Tier-1, Tier-2,
+  SOC Manager oversight, inter-agent tickets, and adaptive red-team generated scenarios.
 
 author: rohitcraftsyt
 
@@ -16,6 +16,9 @@ tags:
   - siem
   - mitre-attack
   - reinforcement-learning
+  - multi-agent
+  - oversight
+  - self-improvement
 
 observation_space:
   type: dict
@@ -29,7 +32,10 @@ action_space:
   description: >
     SOCAction with action_type field: enrich_indicator, query_logs, correlate_alerts,
     check_asset, check_user, classify_alert, map_technique, recommend_action,
-    escalate, submit_investigation, noop.
+    escalate, submit_investigation, noop, escalate_to_tier2, phase_complete,
+    forensic_timeline, sandbox_detonate, memory_analysis, isolate_host, disable_user,
+    block_ioc, close_case, review_decision, override_classification, flag_inconsistency,
+    explain_team_behavior. Team mode also accepts a role field in the step body.
 
 tasks:
   - id: phishing
@@ -72,6 +78,32 @@ tasks:
     max_steps: 80
     reward_range: [0.0, 1.0]
 
+  - id: team_phishing_escalation
+    name: "Team Phishing Escalation"
+    description: >
+      Tier-1 triages a phishing alert, escalates it to Tier-2 for containment,
+      and the SOC Manager reviews the team decision trail.
+    difficulty: easy
+    max_steps: 68
+    reward_range: [0.0, 1.0]
+
+  - id: team_lateral_team
+    name: "Team Lateral Movement"
+    description: >
+      Tier-1 triages a noisy lateral movement queue, Tier-2 responds to escalations,
+      and the SOC Manager flags missed threats and inconsistencies.
+    difficulty: medium
+    max_steps: 68
+    reward_range: [0.0, 1.0]
+
+  - id: red_team_generated
+    name: "Generated Adversarial Scenario"
+    description: >
+      Execute the most recently generated curriculum scenario returned by POST /generate_scenario.
+    difficulty: adaptive
+    max_steps: 30
+    reward_range: [0.0, 1.0]
+
 reward:
   range: [0.0, 1.0]
   dense: true
@@ -87,3 +119,5 @@ endpoints:
   tasks:    GET  /tasks
   grader:   POST /grader
   baseline: POST /baseline
+  generate_scenario: POST /generate_scenario
+  inbox: GET /inbox/{role}

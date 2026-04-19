@@ -19,6 +19,7 @@ from server.environment import SOCEnvironment
 from scenarios.phishing import PhishingScenario
 from scenarios.lateral_movement import LateralMovementScenario
 from scenarios.queue_management import QueueManagementScenario
+from scenarios.team_phishing_escalation import TeamPhishingEscalationScenario
 from models import ScenarioConfig
 
 
@@ -42,6 +43,12 @@ def lateral_movement_config() -> ScenarioConfig:
 def queue_management_config() -> ScenarioConfig:
     """Generate a queue management scenario config with seed=42."""
     return QueueManagementScenario(seed=42).generate()
+
+
+@pytest.fixture
+def team_phishing_config() -> ScenarioConfig:
+    """Generate a team phishing scenario config with seed=42."""
+    return TeamPhishingEscalationScenario(seed=42).generate()
 
 
 # ---------------------------------------------------------------------------

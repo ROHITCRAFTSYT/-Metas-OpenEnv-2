@@ -85,6 +85,7 @@ class ResponseActionType(str, Enum):
 
 class ActionType(str, Enum):
     """All actions available to the SOC analyst agent."""
+    # --- Tier-1 Analyst actions (original) ---
     ENRICH_INDICATOR = "enrich_indicator"
     QUERY_LOGS = "query_logs"
     CORRELATE_ALERTS = "correlate_alerts"
@@ -96,6 +97,129 @@ class ActionType(str, Enum):
     ESCALATE = "escalate"
     SUBMIT_INVESTIGATION = "submit_investigation"
     NOOP = "noop"
+    # --- Tier-1 multi-agent extension ---
+    ESCALATE_TO_TIER2 = "escalate_to_tier2"
+    PHASE_COMPLETE = "phase_complete"
+    # --- Tier-2 Responder actions ---
+    FORENSIC_TIMELINE = "forensic_timeline"
+    SANDBOX_DETONATE = "sandbox_detonate"
+    MEMORY_ANALYSIS = "memory_analysis"
+    ISOLATE_HOST = "isolate_host"
+    DISABLE_USER = "disable_user"
+    BLOCK_IOC = "block_ioc"
+    CLOSE_CASE = "close_case"
+    # --- SOC Manager (Oversight) actions ---
+    REVIEW_DECISION = "review_decision"
+    OVERRIDE_CLASSIFICATION = "override_classification"
+    FLAG_INCONSISTENCY = "flag_inconsistency"
+    EXPLAIN_TEAM_BEHAVIOR = "explain_team_behavior"
+
+
+class AgentRole(str, Enum):
+    """Agent roles in the multi-tier SOC environment."""
+    TIER1 = "tier1"
+    TIER2 = "tier2"
+    MANAGER = "manager"
+    RED_TEAM = "red_team"
+
+
+class EpisodeMode(str, Enum):
+    """Episode operation mode."""
+    TIER1_SOLO = "tier1_solo"
+    TEAM = "team"
+
+
+class EpisodePhase(str, Enum):
+    """Current phase of a team-mode episode."""
+    TRIAGE = "triage"       # Tier-1 analyst phase
+    RESPONSE = "response"   # Tier-2 responder phase
+    OVERSIGHT = "oversight" # Manager review phase
+    COMPLETE = "complete"   # Episode finished
+
+
+class TicketKind(str, Enum):
+    """Type of inter-agent ticket message."""
+    ESCALATION = "escalation"
+    OVERRIDE = "override"
+    FLAG = "flag"
+    CLOSURE = "closure"
+    REVIEW_REQUEST = "review_request"
+
+
+# ---------------------------------------------------------------------------
+# Multi-Agent Models
+# ---------------------------------------------------------------------------
+
+class TicketMessage(BaseModel):
+    """Structured message passed between agent roles via the message bus."""
+
+    model_config = ConfigDict(frozen=False)
+
+    ticket_id: str = Field(..., description="Unique ticket identifier")
+    alert_id: str = Field(..., description="Alert this ticket concerns")
+    from_role: AgentRole = Field(..., description="Role that created this ticket")
+    to_role: Optional[AgentRole] = Field(None, description="Intended recipient role (None = broadcast)")
+    kind: TicketKind = Field(..., description="Ticket type")
+    payload: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Ticket contents: reasoning, classification decision, override, evidence refs, etc."
+    )
+    step_created: int = Field(..., description="Episode step when ticket was created")
+    resolved: bool = Field(default=False, description="Whether ticket has been acted on")
+
+
+class ContainmentResult(BaseModel):
+    """Result of a Tier-2 containment or forensic action."""
+
+    model_config = ConfigDict(frozen=False)
+
+    action_type: str = Field(..., description="The containment action performed")
+    target: str = Field(..., description="Target of the action (host, user, IOC)")
+    success: bool = Field(..., description="Whether the action succeeded")
+    details: str = Field(..., description="Human-readable result details")
+    evidence: List[str] = Field(default_factory=list, description="Forensic evidence items found")
+    timeline_entries: List[str] = Field(default_factory=list, description="Forensic timeline entries")
+
+
+class ManagerReviewResult(BaseModel):
+    """Result of a SOC Manager oversight action."""
+
+    model_config = ConfigDict(frozen=False)
+
+    action_type: str = Field(..., description="The oversight action performed")
+    ticket_id: Optional[str] = Field(None, description="Ticket reviewed")
+    alert_id: Optional[str] = Field(None, description="Alert assessed")
+    finding: str = Field(..., description="Manager's finding or decision")
+    override_applied: bool = Field(default=False, description="Whether a classification was overridden")
+    inconsistency_found: bool = Field(default=False, description="Whether an inconsistency was flagged")
+    explanation: Optional[str] = Field(None, description="Manager's explanation of team behavior")
+
+
+class TeamRewardBreakdown(BaseModel):
+    """Per-role reward breakdown for a team episode step."""
+
+    model_config = ConfigDict(frozen=False)
+
+    tier1_individual: float = Field(default=0.0, description="Tier-1 individual contribution")
+    tier2_individual: float = Field(default=0.0, description="Tier-2 individual contribution")
+    manager_individual: float = Field(default=0.0, description="Manager individual contribution")
+    team_shared: float = Field(default=0.0, description="Shared team F1 component")
+    total: float = Field(default=0.0, description="Combined reward")
+
+
+class ConsistencyStats(BaseModel):
+    """Historical consistency stats visible to the SOC Manager."""
+
+    model_config = ConfigDict(frozen=False)
+
+    tickets_total: int = Field(default=0, description="Total tickets created so far")
+    tickets_resolved: int = Field(default=0, description="Tickets marked resolved")
+    escalation_reviews: int = Field(default=0, description="Escalation tickets reviewed by Manager")
+    closure_reviews: int = Field(default=0, description="Closure tickets reviewed by Manager")
+    overrides_total: int = Field(default=0, description="Override tickets created by Manager")
+    valid_flags: int = Field(default=0, description="Flags that matched ground-truth inconsistencies")
+    invalid_flags: int = Field(default=0, description="Flags that did not match ground truth")
+    consistency_rate: float = Field(default=0.0, description="Share of reviewed/flagged items judged consistent")
 
 
 # ---------------------------------------------------------------------------
@@ -327,9 +451,24 @@ class SOCAction(BaseModel):
     response_action: Optional[ResponseActionType] = Field(None, description="Recommended containment action")
     action_target: Optional[str] = Field(None, description="Target of the response action (IP, hostname, username, etc.)")
 
-    # --- escalate params ---
+    # --- escalate / escalate_to_tier2 params ---
     escalation_severity: Optional[str] = Field(None, description="Escalation severity: critical or high")
     justification: Optional[str] = Field(None, description="Justification for escalation")
+
+    # --- Multi-agent role field (team mode) ---
+    role: Optional[AgentRole] = Field(None, description="Role of the agent submitting this action (team mode)")
+
+    # --- Tier-2 Responder action params ---
+    target_host: Optional[str] = Field(None, description="Target hostname for containment/forensic actions")
+    target_user: Optional[str] = Field(None, description="Target username for user-related actions")
+    target_ioc: Optional[str] = Field(None, description="IOC value to block (IP, domain, hash)")
+    ioc_type: Optional[str] = Field(None, description="IOC type: ip, domain, file_hash")
+
+    # --- SOC Manager action params ---
+    ticket_id: Optional[str] = Field(None, description="Ticket ID to review or reference")
+    new_classification: Optional[AlertClassification] = Field(None, description="Override classification for override_classification action")
+    flag_reason: Optional[str] = Field(None, description="Reason for flagging an inconsistency")
+    explanation_text: Optional[str] = Field(None, description="Manager's explanation of team behavior")
 
 
 # ---------------------------------------------------------------------------
@@ -387,6 +526,38 @@ class SOCObservation(BaseModel):
 
     # Final normalized task score (0,1) — populated after submit_investigation
     task_score: Optional[float] = Field(None, description="Normalized grader score in (0,1) after episode ends")
+
+    # --- Multi-agent fields (team mode only; None in tier1_solo mode) ---
+    episode_mode: EpisodeMode = Field(
+        default=EpisodeMode.TIER1_SOLO,
+        description="Episode operation mode: tier1_solo or team"
+    )
+    current_role: Optional[AgentRole] = Field(
+        None, description="Which role should act next in team mode"
+    )
+    current_phase: Optional[EpisodePhase] = Field(
+        None, description="Current episode phase in team mode"
+    )
+    phase_steps_remaining: Optional[int] = Field(
+        None, description="Steps remaining in the current phase (team mode)"
+    )
+    tickets: List[TicketMessage] = Field(
+        default_factory=list,
+        description="Role-filtered ticket messages visible to the current agent"
+    )
+    containment_results: List[ContainmentResult] = Field(
+        default_factory=list,
+        description="Results from most recent Tier-2 containment/forensic action"
+    )
+    manager_review_result: Optional[ManagerReviewResult] = Field(
+        None, description="Result from most recent Manager oversight action"
+    )
+    team_reward_breakdown: Optional[TeamRewardBreakdown] = Field(
+        None, description="Per-role reward breakdown (team mode)"
+    )
+    consistency_stats: Optional[ConsistencyStats] = Field(
+        None, description="Historical consistency stats visible to the Manager"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -453,6 +624,19 @@ class GroundTruth(BaseModel):
         default_factory=list,
         description="For queue management: list of attack chains, each a list of related alert IDs"
     )
+    # --- Team-mode escalation ground truth ---
+    required_escalations: List[str] = Field(
+        default_factory=list,
+        description="Alert IDs that Tier-1 should escalate to Tier-2 in team mode"
+    )
+    required_containments: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Expected Tier-2 containment actions per alert_id: {alert_id: [action_type, ...]}"
+    )
+    expected_manager_flags: List[str] = Field(
+        default_factory=list,
+        description="Alert IDs where the Manager should flag an inconsistency"
+    )
 
 
 class ScenarioConfig(BaseModel):
@@ -487,6 +671,44 @@ class ScenarioConfig(BaseModel):
         description="User directory: {username: UserInfo}"
     )
     ground_truth: GroundTruth = Field(..., description="Answer key — never exposed to agent")
+    # --- Red-Team difficulty parameters ---
+    difficulty_floor: float = Field(
+        default=0.5,
+        description="Red-Team difficulty floor [0.0, 1.0]: higher = more obfuscated scenarios"
+    )
+    noise_density: float = Field(
+        default=0.6,
+        description="Fraction of alerts that are FP/noise [0.0, 1.0]"
+    )
+    ioc_freshness: float = Field(
+        default=0.7,
+        description="Fraction of IOCs in threat feeds [0.0=all stale, 1.0=all fresh]"
+    )
+    correlation_obfuscation: float = Field(
+        default=0.3,
+        description="How obfuscated correlation signals are [0.0=clear, 1.0=fully hidden]"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Red-Team Configuration Model
+# ---------------------------------------------------------------------------
+
+class RedTeamConfig(BaseModel):
+    """Configuration for the Red-Team Generator's curriculum."""
+
+    model_config = ConfigDict(frozen=False)
+
+    difficulty_floor: float = Field(default=0.5, ge=0.0, le=1.0, description="Base difficulty [0,1]")
+    attack_patterns: List[str] = Field(
+        default_factory=lambda: ["phishing", "lateral_movement", "insider_threat"],
+        description="Attack patterns to generate scenarios for"
+    )
+    noise_density: float = Field(default=0.6, ge=0.0, le=1.0, description="FP fraction in generated scenarios")
+    ioc_freshness: float = Field(default=0.7, ge=0.0, le=1.0, description="IOC threat-feed freshness")
+    correlation_obfuscation: float = Field(default=0.3, ge=0.0, le=1.0, description="Correlation signal obscurity")
+    blue_team_win_rate: float = Field(default=0.5, ge=0.0, le=1.0, description="Recent blue-team win rate for curriculum adaptation")
+    episode_count: int = Field(default=0, description="Total episodes generated so far")
 
 
 # ---------------------------------------------------------------------------
@@ -508,3 +730,7 @@ class EnvironmentState(BaseModel):
     classified_count: int = Field(default=0, description="Number of alerts classified so far")
     seed: Optional[int] = Field(None, description="Scenario seed")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional episode metadata")
+    # Multi-agent state
+    episode_mode: EpisodeMode = Field(default=EpisodeMode.TIER1_SOLO, description="Episode mode")
+    current_phase: Optional[EpisodePhase] = Field(None, description="Current team phase")
+    current_role: Optional[AgentRole] = Field(None, description="Expected active role")

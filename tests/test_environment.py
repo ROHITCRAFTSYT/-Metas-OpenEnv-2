@@ -7,7 +7,9 @@ import pytest
 from server.environment import SOCEnvironment
 from models import (
     ActionType,
+    AgentRole,
     AlertClassification,
+    EpisodeMode,
     IndicatorType,
     LogSource,
     SOCAction,
@@ -171,3 +173,88 @@ class TestSOCEnvironment:
         obs3 = environment.reset(task_id="phishing", seed=999)
         alert3 = obs3.alert_queue[0]
         assert alert3.alert_id != alert1.alert_id
+
+    def test_team_reset_starts_in_tier1_phase(self, environment):
+        """Team reset should expose team metadata and start with Tier-1."""
+        obs = environment.reset(task_id="team_phishing_escalation", seed=42, mode="team")
+
+        assert obs.episode_mode == EpisodeMode.TEAM
+        assert obs.current_role == AgentRole.TIER1
+        assert obs.current_phase is not None
+        assert obs.phase_steps_remaining == 40
+        assert obs.investigation_budget == 68
+        assert obs.tickets == []
+
+    def test_team_escalation_creates_ticket_and_filters_tier2_view(self, environment):
+        """Tier-1 escalation should create a ticket and reveal it to Tier-2 after phase advance."""
+        obs = environment.reset(task_id="team_phishing_escalation", seed=42, mode="team")
+        alert_id = obs.alert_queue[0].alert_id
+        ip_indicator = obs.alert_queue[0].indicators["ip"][0]
+
+        environment.step(SOCAction(
+            action_type=ActionType.ENRICH_INDICATOR,
+            role=AgentRole.TIER1,
+            indicator=ip_indicator,
+            indicator_type=IndicatorType.IP,
+        ))
+        environment.step(SOCAction(
+            action_type=ActionType.CLASSIFY_ALERT,
+            role=AgentRole.TIER1,
+            alert_id=alert_id,
+            classification=AlertClassification.TRUE_POSITIVE,
+            confidence=0.9,
+        ))
+        environment.step(SOCAction(
+            action_type=ActionType.ESCALATE_TO_TIER2,
+            role=AgentRole.TIER1,
+            alert_id=alert_id,
+            justification="Malicious phishing indicators and execution evidence.",
+        ))
+
+        obs = environment.step(SOCAction(
+            action_type=ActionType.PHASE_COMPLETE,
+            role=AgentRole.TIER1,
+        ))
+
+        assert obs.current_role == AgentRole.TIER2
+        assert len(obs.alert_queue) == 1
+        assert len(obs.tickets) == 1
+        assert obs.tickets[0].alert_id == alert_id
+
+    def test_manager_observation_includes_consistency_stats(self, environment):
+        """Manager phase should expose historical consistency stats."""
+        obs = environment.reset(task_id="team_phishing_escalation", seed=42, mode="team")
+        alert_id = obs.alert_queue[0].alert_id
+        ip_indicator = obs.alert_queue[0].indicators["ip"][0]
+
+        environment.step(SOCAction(
+            action_type=ActionType.ENRICH_INDICATOR,
+            role=AgentRole.TIER1,
+            indicator=ip_indicator,
+            indicator_type=IndicatorType.IP,
+        ))
+        environment.step(SOCAction(
+            action_type=ActionType.CLASSIFY_ALERT,
+            role=AgentRole.TIER1,
+            alert_id=alert_id,
+            classification=AlertClassification.TRUE_POSITIVE,
+            confidence=0.9,
+        ))
+        environment.step(SOCAction(
+            action_type=ActionType.ESCALATE_TO_TIER2,
+            role=AgentRole.TIER1,
+            alert_id=alert_id,
+            justification="Malicious indicators and execution evidence.",
+        ))
+        environment.step(SOCAction(action_type=ActionType.PHASE_COMPLETE, role=AgentRole.TIER1))
+        environment.step(SOCAction(
+            action_type=ActionType.CLOSE_CASE,
+            role=AgentRole.TIER2,
+            alert_id=alert_id,
+            justification="Contained and documented.",
+        ))
+        obs = environment.step(SOCAction(action_type=ActionType.PHASE_COMPLETE, role=AgentRole.TIER2))
+
+        assert obs.current_role == AgentRole.MANAGER
+        assert obs.consistency_stats is not None
+        assert obs.consistency_stats.tickets_total >= 2

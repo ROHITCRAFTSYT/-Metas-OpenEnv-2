@@ -77,6 +77,12 @@ Investigation strategy:
 
 Respond with ONLY a valid JSON action. No explanation. Investigate thoroughly before classifying."""
 
+ROLE_SYSTEM_PROMPTS = {
+    "tier1": """You are the Tier-1 SOC analyst. Triage alerts quickly, gather just enough evidence, classify when justified, and escalate only the cases that need deeper containment. Respond with JSON only.""",
+    "tier2": """You are the Tier-2 SOC responder. Work only the escalated tickets, use forensic and containment actions, then close the case or hand off a clean closure signal. Respond with JSON only.""",
+    "manager": """You are the SOC Manager. Review the team's tickets, override mistakes carefully, flag real inconsistencies, explain the team's behavior, and submit the investigation when oversight is complete. Respond with JSON only.""",
+}
+
 # ---------------------------------------------------------------------------
 # Observation Formatter
 # ---------------------------------------------------------------------------
@@ -167,6 +173,43 @@ def format_observation(obs: dict, step: int) -> str:
     return "\n".join(parts)
 
 
+def format_team_observation(obs: dict, step: int) -> str:
+    """Format a team-mode observation with phase and ticket context."""
+    role = obs.get("current_role") or "unknown"
+    phase = obs.get("current_phase") or "unknown"
+    parts = [
+        f"=== STEP {step} | Role: {role} | Phase: {phase} | Phase budget: {obs.get('phase_steps_remaining', '?')} ==="
+    ]
+    parts.append(format_observation(obs, step))
+
+    tickets = obs.get("tickets", [])
+    if tickets:
+        parts.append("\n[TICKETS]")
+        for ticket in tickets[:8]:
+            parts.append(
+                f"  {ticket.get('ticket_id')} | {ticket.get('kind')} | alert={ticket.get('alert_id')} | "
+                f"from={ticket.get('from_role')} -> {ticket.get('to_role')}"
+            )
+            payload = ticket.get("payload", {})
+            if payload:
+                parts.append(f"    payload={json.dumps(payload)[:220]}")
+
+    if obs.get("containment_results"):
+        parts.append("\n[CONTAINMENT RESULTS]")
+        for result in obs["containment_results"][:5]:
+            parts.append(
+                f"  {result.get('action_type')} target={result.get('target')} success={result.get('success')} "
+                f"details={result.get('details')}"
+            )
+
+    if obs.get("manager_review_result"):
+        review = obs["manager_review_result"]
+        parts.append("\n[MANAGER REVIEW]")
+        parts.append(f"  {review.get('action_type')}: {review.get('finding')}")
+
+    return "\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Action Parser
 # ---------------------------------------------------------------------------
@@ -226,6 +269,16 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     print(f"[STEP] step={step} action={action_inline} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 
+def log_team_step(step: int, role: str, phase: str, action: str, reward: float, done: bool, error: Optional[str] = None) -> None:
+    action_inline = action.replace("\n", " ").replace("\r", "")
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP role={role} phase={phase}] step={step} action={action_inline} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
 def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
     # Score must be strictly (0, 1) — clamp here as final safety net
     score = max(0.001, min(0.999, score))
@@ -251,6 +304,8 @@ def run_task(
         Final cumulative reward (float).
     """
     model_label = MODEL_NAME or "heuristic"
+    if task_id.startswith("team_") or task_id == "red_team_generated":
+        return run_team_task(task_id, server_client, llm_client, seed=seed, verbose=verbose)
     print(f"\n{'='*60}")
     print(f"TASK: {task_id.upper()} (seed={seed})")
     print(f"{'='*60}")
@@ -372,6 +427,206 @@ def run_task(
     elapsed_total = time.time() - task_start
     log_end(success=True, steps=step, score=final_score, rewards=step_rewards)
     print(f"\nTask complete in {elapsed_total:.1f}s | Steps: {step} | Final score: {final_score:.4f}")
+    return final_score
+
+
+def _team_heuristic_action(obs: dict) -> dict:
+    """Simple multi-agent heuristic that follows phase semantics."""
+    role = obs.get("current_role")
+    alerts = obs.get("alert_queue", [])
+    investigations = obs.get("investigations", {})
+    tickets = obs.get("tickets", [])
+
+    if role == "tier1":
+        for alert in alerts:
+            alert_id = alert["alert_id"]
+            inv = investigations.get(alert_id, {})
+            if inv.get("classification") is None:
+                ip_values = alert.get("indicators", {}).get("ip", [])
+                if ip_values and not inv.get("enriched_indicators"):
+                    return {
+                        "action_type": "enrich_indicator",
+                        "role": "tier1",
+                        "indicator": ip_values[0],
+                        "indicator_type": "ip",
+                    }
+                classification = "true_positive" if alert.get("severity") in ("high", "critical") else "false_positive"
+                return {
+                    "action_type": "classify_alert",
+                    "role": "tier1",
+                    "alert_id": alert_id,
+                    "classification": classification,
+                    "confidence": 0.8,
+                }
+            if inv.get("classification") == "true_positive" and not inv.get("escalated"):
+                return {
+                    "action_type": "escalate_to_tier2",
+                    "role": "tier1",
+                    "alert_id": alert_id,
+                    "justification": "High severity plus malicious evidence warrants Tier-2 containment.",
+                }
+        return {"action_type": "phase_complete", "role": "tier1"}
+
+    if role == "tier2":
+        for ticket in tickets:
+            alert_id = ticket["alert_id"]
+            alert = next((a for a in alerts if a["alert_id"] == alert_id), {})
+            inv = investigations.get(alert_id, {})
+            timeline_entries = inv.get("evidence_timeline", [])
+            timeline_text = "\n".join(timeline_entries)
+
+            if "Case closed:" in timeline_text:
+                continue
+
+            host = alert.get("indicators", {}).get("hostname", ["WORKSTATION-01"])[0]
+            ip_value = alert.get("indicators", {}).get("ip", [None])[0]
+            domain_value = alert.get("indicators", {}).get("domain", [None])[0]
+            file_hash = alert.get("indicators", {}).get("file_hash", [None])[0]
+
+            if "Forensic timeline for" not in timeline_text:
+                return {
+                    "action_type": "forensic_timeline",
+                    "role": "tier2",
+                    "alert_id": alert_id,
+                    "target_host": host,
+                }
+            if file_hash and "Sandbox detonated" not in timeline_text:
+                return {
+                    "action_type": "sandbox_detonate",
+                    "role": "tier2",
+                    "alert_id": alert_id,
+                    "target_ioc": file_hash,
+                }
+            if host and "Isolated host" not in timeline_text:
+                return {
+                    "action_type": "isolate_host",
+                    "role": "tier2",
+                    "alert_id": alert_id,
+                    "target_host": host,
+                }
+            if ip_value and f"Blocked IOC '{ip_value}'" not in timeline_text:
+                return {
+                    "action_type": "block_ioc",
+                    "role": "tier2",
+                    "alert_id": alert_id,
+                    "target_ioc": ip_value,
+                    "ioc_type": "ip",
+                }
+            if domain_value and f"Blocked IOC '{domain_value}'" not in timeline_text:
+                return {
+                    "action_type": "block_ioc",
+                    "role": "tier2",
+                    "alert_id": alert_id,
+                    "target_ioc": domain_value,
+                    "ioc_type": "domain",
+                }
+            return {
+                "action_type": "close_case",
+                "role": "tier2",
+                "alert_id": alert_id,
+                "justification": "Containment executed and evidence reviewed.",
+            }
+        return {"action_type": "phase_complete", "role": "tier2"}
+
+    if role == "manager":
+        unresolved = [ticket for ticket in tickets if not ticket.get("resolved")]
+        if unresolved:
+            ticket = unresolved[0]
+            return {"action_type": "review_decision", "role": "manager", "ticket_id": ticket["ticket_id"]}
+        manager_result = obs.get("manager_review_result") or {}
+        if manager_result.get("action_type") != "explain_team_behavior":
+            return {
+                "action_type": "explain_team_behavior",
+                "role": "manager",
+                "explanation_text": (
+                    "Tier-1 classified and escalated likely true positives, "
+                    "Tier-2 added forensic evidence and containment, and "
+                    "manager oversight reviewed all remaining tickets for consistency."
+                ),
+            }
+        return {
+            "action_type": "submit_investigation",
+            "role": "manager",
+        }
+
+    return NOOP_ACTION
+
+
+def run_team_task(
+    task_id: str,
+    server_client: httpx.Client,
+    llm_client: Optional[OpenAI],
+    seed: int = SEED,
+    verbose: bool = True,
+) -> float:
+    """Run one complete team-mode task episode."""
+    model_label = MODEL_NAME or "heuristic"
+    print(f"\n{'='*60}")
+    print(f"TEAM TASK: {task_id.upper()} (seed={seed})")
+    print(f"{'='*60}")
+    log_start(task_id, model_label)
+
+    step_rewards: list = []
+    if task_id == "red_team_generated":
+        server_client.post("/generate_scenario", json={"seed": seed}).raise_for_status()
+    reset_resp = server_client.post("/reset", json={"task_id": task_id, "seed": seed, "mode": "team"})
+    reset_resp.raise_for_status()
+    obs = reset_resp.json()
+
+    task_start = time.time()
+    step = 0
+    role_histories: dict[str, list] = {}
+
+    while not obs.get("done", False):
+        step += 1
+        role = obs.get("current_role") or "unknown"
+        phase = obs.get("current_phase") or "unknown"
+
+        if time.time() - task_start > TASK_TIMEOUT_SECONDS:
+            action_dict = {"action_type": "submit_investigation", "role": role}
+        elif llm_client is not None:
+            system_prompt = ROLE_SYSTEM_PROMPTS.get(role, SYSTEM_PROMPT)
+            messages = role_histories.setdefault(role, [{"role": "system", "content": system_prompt}])
+            messages.append({"role": "user", "content": format_team_observation(obs, step)})
+            try:
+                response = llm_client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=messages,
+                    temperature=0.0,
+                    max_tokens=256,
+                    timeout=30,
+                )
+                raw_text = response.choices[0].message.content or ""
+                action_dict = parse_action(raw_text)
+                action_dict["role"] = role
+                messages.append({"role": "assistant", "content": json.dumps(action_dict)})
+            except Exception:
+                action_dict = _team_heuristic_action(obs)
+        else:
+            action_dict = _team_heuristic_action(obs)
+
+        step_resp = server_client.post(
+            "/step",
+            content=json.dumps(action_dict),
+            headers={"Content-Type": "application/json"},
+        )
+        step_resp.raise_for_status()
+        obs = step_resp.json()
+
+        reward = obs.get("reward", 0.0)
+        done = obs.get("done", False)
+        step_rewards.append(reward)
+        log_team_step(step, role, phase, json.dumps(action_dict), reward, done)
+        if verbose:
+            print(f"  Step {step:3d} [{role}/{phase}] -> {action_dict.get('action_type')} reward={reward:+.3f}")
+
+    final_score = max(0.001, min(0.999, obs.get("task_score") or obs.get("cumulative_reward", 0.0)))
+    team_f1 = None
+    if obs.get("team_reward_breakdown"):
+        team_f1 = obs["team_reward_breakdown"].get("team_shared")
+    if team_f1 is not None:
+        print(f"[END total_reward={obs.get('cumulative_reward', 0.0):.3f} team_f1={team_f1:.3f}]", flush=True)
+    log_end(success=True, steps=step, score=final_score, rewards=step_rewards)
     return final_score
 
 
@@ -798,8 +1053,15 @@ def main():
     else:
         print("[INFO] No HF_TOKEN/API_KEY set. Using heuristic agent.")
 
-    # Run all 4 tasks
-    tasks = ["phishing", "lateral_movement", "queue_management", "insider_threat"]
+    # Run solo and team tasks
+    tasks = [
+        "phishing",
+        "lateral_movement",
+        "queue_management",
+        "insider_threat",
+        "team_phishing_escalation",
+        "team_lateral_team",
+    ]
     results = {}
     total_start = time.time()
 
