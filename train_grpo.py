@@ -83,49 +83,83 @@ ROLE_SYSTEM_PROMPTS = {
 
 def oracle_action(obs: dict) -> dict:
     """Scripted oracle for frozen roles during staged training."""
-    role = obs.get("current_role", "tier1")
-    phase = obs.get("current_phase", "triage")
+    role = obs.get("current_role") or "tier1"
+    phase = obs.get("current_phase") or "triage"
     alerts = obs.get("alert_queue", [])
+    invs = obs.get("investigations") or {}
 
     if phase == "triage" or role == "tier1":
-        # Enrich first alert IOC, then classify, then escalate/phase_complete
+        # Pass 1: enrich then classify each unclassified alert
         for alert in alerts:
-            inv = (obs.get("investigations") or {}).get(alert["alert_id"], {})
-            if not inv.get("classification"):
-                ips = list(alert.get("indicators", {}).get("ip", []))
-                if ips and not inv.get("enrichment_results"):
-                    return {"action_type": "enrich_indicator", "indicator": ips[0],
-                            "indicator_type": "ip", "query_alert_id": alert["alert_id"], "role": "tier1"}
-                cls = "true_positive" if alert.get("severity") in ("high", "critical") else "false_positive"
-                return {"action_type": "classify_alert", "alert_id": alert["alert_id"],
-                        "classification": cls, "role": "tier1"}
-        # All classified — escalate TPs then complete
+            aid = alert["alert_id"]
+            inv = invs.get(aid, {})
+            if inv.get("classification"):
+                continue
+            ips = list(alert.get("indicators", {}).get("ip", []))
+            # enriched_indicators is a dict keyed by indicator value
+            already_enriched = inv.get("enriched_indicators") or {}
+            if ips and ips[0] not in already_enriched:
+                return {"action_type": "enrich_indicator", "indicator": ips[0],
+                        "indicator_type": "ip", "query_alert_id": aid, "role": "tier1"}
+            cls = "true_positive" if alert.get("severity") in ("high", "critical") else "false_positive"
+            return {"action_type": "classify_alert", "alert_id": aid,
+                    "classification": cls, "confidence": 0.85, "role": "tier1"}
+        # Pass 2: escalate all confirmed TPs (env handles over-escalation penalty)
         for alert in alerts:
-            inv = (obs.get("investigations") or {}).get(alert["alert_id"], {})
+            aid = alert["alert_id"]
+            inv = invs.get(aid, {})
             if inv.get("classification") == "true_positive" and not inv.get("escalated"):
-                return {"action_type": "escalate_to_tier2", "alert_id": alert["alert_id"],
-                        "justification": "TP confirmed", "role": "tier1"}
+                return {"action_type": "escalate_to_tier2", "alert_id": aid,
+                        "justification": "TP confirmed via enrichment", "role": "tier1"}
         return {"action_type": "phase_complete", "role": "tier1"}
 
     elif phase == "response" or role == "tier2":
         tickets = obs.get("tickets") or []
+        handled = set()
         for ticket in tickets:
-            if ticket.get("kind") == "escalation":
-                aid = ticket.get("alert_id")
-                if aid:
-                    return {"action_type": "isolate_host", "alert_id": aid,
-                            "target_host": "WORKSTATION-ALPHA", "role": "tier2"}
+            if ticket.get("kind") != "escalation":
+                continue
+            aid = ticket.get("alert_id")
+            if not aid or aid in handled:
+                continue
+            inv = invs.get(aid, {})
+            # Try to find a real TP host from the alert queue
+            host = None
+            for a in alerts:
+                if a["alert_id"] == aid:
+                    hosts = list(a.get("indicators", {}).get("hostname", []))
+                    if hosts:
+                        host = hosts[0]
+                    break
+            host = host or "WORKSTATION-ALPHA"
+            already_closed = any(
+                e.startswith("Case closed:") for e in (inv.get("evidence_timeline") or [])
+            )
+            if not already_closed:
+                handled.add(aid)
+                return {"action_type": "close_case", "alert_id": aid,
+                        "justification": f"Contained host {host}", "role": "tier2"}
         return {"action_type": "phase_complete", "role": "tier2"}
 
     else:  # oversight / manager
         tickets = obs.get("tickets") or []
+        reviewed = set()
         for ticket in tickets:
             aid = ticket.get("alert_id")
-            if aid:
+            if aid and aid not in reviewed:
+                reviewed.add(aid)
                 return {"action_type": "review_decision", "alert_id": aid,
                         "ticket_id": ticket.get("ticket_id", ""), "role": "manager"}
+        alerts_summary = ", ".join(
+            f"{a['alert_id']}({(invs.get(a['alert_id']) or {}).get('classification','?')})"
+            for a in alerts[:3]
+        )
         return {"action_type": "explain_team_behavior",
-                "explanation_text": "Team executed standard triage and escalation protocol.",
+                "explanation_text": (
+                    f"Team triaged {len(alerts)} alerts. Escalated confirmed true positives. "
+                    f"Tier-2 contained threats and closed cases. "
+                    f"Alert decisions: {alerts_summary}. No inconsistencies observed."
+                ),
                 "role": "manager"}
 
 
