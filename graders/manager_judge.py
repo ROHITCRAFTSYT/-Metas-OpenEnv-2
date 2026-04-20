@@ -131,14 +131,20 @@ Default to 0.5 when uncertain. A score of 1.0 should be rare."""
 
         import openai  # local import — guarded by availability check above
 
-        api_key = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
         base_url = os.environ.get("API_BASE_URL")
         model = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
-        if not api_key:
-            raise RuntimeError("No HF_TOKEN or OPENAI_API_KEY available; using heuristic fallback.")
+        # HF_TOKEN is NOT a valid OpenAI key — only use it when API_BASE_URL
+        # is explicitly set (indicating an HF-compatible endpoint).
+        if base_url:
+            api_key = os.environ.get("HF_TOKEN") or os.environ.get("OPENAI_API_KEY")
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY")
 
-        client_kwargs: dict = {"api_key": api_key}
+        if not api_key:
+            raise RuntimeError("No API key for manager judge; using heuristic fallback.")
+
+        client_kwargs: dict = {"api_key": api_key, "timeout": 5.0}
         if base_url:
             client_kwargs["base_url"] = base_url
 
