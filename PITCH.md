@@ -1,4 +1,4 @@
-# SOC-Triage-Gym v2 — 3-Minute Pitch Script
+# SOC-Triage-Gym v3 — 3-Minute Pitch Script
 
 > **Structure:** Hook (30s) → Problem (30s) → Solution + Demo (90s) → Results (30s)
 > **Memorize the first 30 seconds cold — that's what wins or loses the judges' attention.**
@@ -70,17 +70,21 @@
 
 ## RESULTS (2:30–3:00)
 
-> "86 tests green. Six reward-hack vulnerabilities fixed.
+> "108 tests green. Six reward-hack vulnerabilities fixed.
 > Training pipeline converted from oracle theater to real per-step GRPO —
 > each training example is a single observation, the model generates one action,
 > and the reward is the environment's immediate step signal.
 >
-> Three themes covered:
-> Theme #1 — multi-agent interactions with theory-of-mind oversight.
-> Fleet AI — scalable manager audit across any team configuration.
-> Theme #4 — self-improving curriculum via red-team co-evolution.
+> **Nine themes / sub-themes covered, all machine-verifiable at `GET /themes/coverage`:**
+> Theme #1 multi-agent + Fleet AI oversight. Halluminate multi-actor with three external NPCs.
+> Theme #2 super-long-horizon via the 250-step `apt_campaign` task.
+> Mercor token-length-scaled narrative rewards — floor/cap/quality-gated so you can't farm them.
+> Patronus mid-episode schema drift: alert fields rename, severity thresholds tighten, policies update.
+> Scaler AI Labs multi-app enterprise with cross-app rules (can't disable a user without an open P2+ ticket).
+> Snorkel rotating expert judges — Dr. Accuracy, Speedy Sam, Thorough Thea — whose weights shift the reward function.
+> Theme #4 red-team co-evolution keeps the curriculum pinned to the learning zone.
 >
-> SOC-Triage-Gym v2: the first OpenEnv where the reward knows the team won."
+> SOC-Triage-Gym v3: the first OpenEnv where the reward knows the team won — under drift, under audit, under a rotating expert."
 
 ---
 

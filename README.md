@@ -16,11 +16,15 @@ tags:
   - grpo
 ---
 
-# SOC-Triage-Gym v2
+# SOC-Triage-Gym v3
 
-**OpenEnv Hackathon Apr 2026 — Theme #1 Multi-Agent Interactions + Fleet AI Oversight + Theme #4 Self-Improvement**
+**OpenEnv Hackathon Apr 2026 — Full-stack theme coverage**
 
-The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst.
+Primary: **Theme #1 Multi-Agent Interactions**
+Sub-theme bonus prizes claimed: **Fleet AI** · **Halluminate** · **Mercor** · **Patronus AI** · **Scaler AI Labs** · **Snorkel AI**
+Also covers: **Theme #2 Long-Horizon Planning** · **Theme #3.1 Professional Tasks** · **Theme #4 Self-Improvement**
+
+The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **9 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox.
 
 A real Security Operations Center has three tiers: Tier-1 triages alerts and escalates, Tier-2 contains confirmed threats, and a Manager audits the team's decisions. SOC-Triage-Gym v2 models all three roles with a live ticket bus, a phase state machine, and an LLM-based manager judge. The reward signal is a blend of individual role performance and team F1 — so an agent that maximizes personal score at the expense of team outcome is penalized.
 
@@ -48,15 +52,16 @@ Team F1 uses delta (not sticky value) — NOOP-spamming after a correct classifi
 
 ## Tasks
 
-| Task | Mode | Alerts | Difficulty |
-|------|------|--------|-----------|
-| `phishing` | solo | 1 | easy |
-| `lateral_movement` | solo | 5 | medium |
-| `queue_management` | solo | 20 | hard |
-| `insider_threat` | solo | 30 | expert |
-| `team_phishing_escalation` | team | 1 | easy |
-| `team_lateral_team` | team | 8 | medium |
-| `red_team_generated` | team | dynamic | adaptive |
+| Task | Mode | Alerts | Max steps | Difficulty |
+|------|------|--------|-----------|-----------|
+| `phishing` | solo | 1 | 15 | easy |
+| `lateral_movement` | solo | 5 | 30 | medium |
+| `queue_management` | solo | 20 | 60 | hard |
+| `insider_threat` | solo | 30 | 80 | expert |
+| `team_phishing_escalation` | team | 1 | 68 | easy |
+| `team_lateral_team` | team | 8 | 68 | medium |
+| `apt_campaign` | solo | 60+ | **250** | super-hard |
+| `red_team_generated` | team | dynamic | 30–250 | adaptive |
 
 ---
 
@@ -156,6 +161,12 @@ See [DEMO.md](DEMO.md) for step-by-step judge demo instructions.
 | `/baseline` | POST | Run oracle baseline |
 | `/generate_scenario` | POST | Generate adversarial scenario |
 | `/inbox/{role}` | GET | Ticket inbox for tier1/tier2/manager |
+| `/actors/messages` | GET | External NPC actor inbox (Halluminate) |
+| `/policy/current` · `/policy/history` | GET | Active policy version & drift history (Patronus) |
+| `/reward/config` · `/reward/token_bonus` | GET/POST | Token-scaled reward preview (Mercor) |
+| `/experts/current` · `/experts/rotate` · `/experts/panel` | GET/POST | Rotating expert judge (Snorkel) |
+| `/tickets` · `/tickets/open` · `/tickets/{id}/resolve` · `/tickets/can_disable_user` | GET/POST | Enterprise ticketing + cross-app rule (Scaler AI Labs) |
+| `/themes/coverage` | GET | Machine-checkable theme-coverage manifest |
 
 ---
 
@@ -192,10 +203,10 @@ Dense step rewards for productive investigation. Final score on submit/phase_com
 ## Test Coverage
 
 ```
-86 passed, 1 skipped
+108 passed, 1 skipped
 ```
 
-Coverage includes: solo backward-compat, team phase state machine, ticket bus, containment tools, manager oversight, team grader, red-team generator, reward-hack regression tests (close_case idempotency, team_f1 delta, zero-escalation guard, over-escalation threshold, manager judge fallback).
+Coverage includes: solo backward-compat, team phase state machine, ticket bus, containment tools, manager oversight, team grader, red-team generator, reward-hack regression tests (close_case idempotency, team_f1 delta, zero-escalation guard, over-escalation threshold, manager judge fallback), **plus new v3 theme-coverage tests**: multi-actor determinism & role routing, policy-drift schedule & active-at semantics, token-bonus floor/cap/monotonicity, expert-panel rotation & weight shift, ticketing cross-app rule, apt_campaign narrative reward growth.
 
 ---
 
@@ -204,12 +215,13 @@ Coverage includes: solo backward-compat, team phase state machine, ticket bus, c
 ```
 soc-triage-gym/
   server/           FastAPI app + SOCEnvironment
-  scenarios/        Scenario configs + RedTeamGenerator
-  graders/          Task graders + ManagerJudge (LLM + heuristic fallback)
-  tools/            enrichment, log query, correlation, containment, oversight
-  tests/            86 tests
-  scripts/          gen_plots.py (pre-generate reward curves)
-  models.py         Pydantic v2 types
+  scenarios/        Scenario configs + RedTeamGenerator + PolicyDriftEngine + apt_campaign
+  graders/          Task graders + ManagerJudge + ExpertPanel + token-scaled reward + apt_campaign grader
+  tools/            enrichment, log query, correlation, containment, oversight, ticketing (SLA)
+  actors/           External NPC actors: ThreatIntelFeed, ComplianceOfficer, EndUserReporter
+  tests/            108 tests (incl. test_themes_coverage.py regression pack)
+  scripts/          gen_plots.py (reward curves), replay.py (deterministic CLI)
+  models.py         Pydantic v2 types (incl. ActorMessage, PolicyVersion, RewardBlendConfig, ExpertProfile, TicketSLA)
   train_grpo.py     Per-step GRPO training script
   inference.py      Scripted oracle baseline
   openenv.yaml      OpenEnv metadata
@@ -221,11 +233,21 @@ soc-triage-gym/
 
 ## Theme Coverage
 
-| Theme | How |
-|-------|-----|
-| **Theme #1 Multi-Agent Interactions** | 3-role team (T1→T2→Manager) with ticket bus, phase state machine, blended team reward |
-| **Fleet AI Scalable Oversight** | SOC Manager audits every decision, flags inconsistencies, explains behavior — scored by LLM judge |
-| **Theme #4 Self-Improvement** | Red-Team Generator adapts difficulty to keep blue win rate near 0.5; curriculum oscillation shown above |
+| Theme / sub-theme | How we implement it | Evidence |
+|---|---|---|
+| **Theme #1 Multi-Agent Interactions** *(primary)* | 3-role team (T1 → T2 → Manager) with ticket bus, phase state machine, blended team reward | `server/environment.py`, `models.py` |
+| **Fleet AI — Scalable Oversight** | SOC Manager audits every decision, flags inconsistencies, explains behavior — scored by LLM judge | `graders/manager_judge.py` |
+| **Halluminate — Multi-Actor Environment** | 3 external NPC actors (ThreatIntelFeed, ComplianceOfficer, EndUserReporter) push unsolicited messages into role inboxes; agent must discover, triage and respond | `actors/`, `GET /actors/messages` |
+| **Theme #2 — (Super) Long-Horizon Planning** | `apt_campaign` task: 250 steps, 60+ alerts across 5 phases (initial-access → persistence → lateral → exfil → cleanup), sparse delayed narrative reward | `scenarios/apt_campaign.py`, `graders/apt_campaign_grader.py` |
+| **Mercor — Token-Scaled Rewards** | Free-text Manager explanations + APT-campaign narrative earn a floor/cap scaled length-bonus multiplied by an LLM quality gate (prevents rambling-farm) | `graders/token_scaled_reward.py`, `POST /reward/token_bonus` |
+| **Scale AI — Non-code Business Workflow (IT)** | SOC IR is a first-class IT workflow with SLA clocks, priorities, assignee fields in a dedicated ticketing app | `tools/ticketing.py` |
+| **Theme #3.1 Professional Tasks** | Real SOC tool loop (enrichment, log query, correlation, containment, forensics) with realistic APIs | `tools/` |
+| **Scaler AI Labs — Multi-App Enterprise** | Four logical apps (SIEM / EDR / IAM / TicketingSystem) with cross-app business rule: `disable_user` requires an open P1/P2 ticket | `tools/ticketing.py`, `GET /tickets/can_disable_user` |
+| **Patronus AI — Schema / Policy Drift** | `PolicyDriftEngine` injects 2 mid-episode changes (field rename, severity threshold, admin-must-escalate, T&C update); grader honours active policy at action time | `scenarios/policy_drift.py`, `GET /policy/history` |
+| **Theme #4 Self-Improvement** | Red-Team Generator adapts difficulty to keep blue win rate near 0.5; curriculum oscillation shown above | `scenarios/red_team_generator.py` |
+| **Snorkel AI — Experts-in-the-Loop** | Rotating ExpertPanel (Dr. Accuracy / Speedy Sam / Thorough Thea) with drifting rubric weights; agent is hinted which expert is judging | `graders/expert_panel.py`, `GET /experts/current` |
+
+A machine-checkable summary is served at **`GET /themes/coverage`** so judges can verify in one request.
 
 ---
 

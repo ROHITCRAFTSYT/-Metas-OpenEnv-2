@@ -4,6 +4,7 @@ from graders.lateral_movement_grader import LateralMovementGrader
 from graders.queue_management_grader import QueueManagementGrader
 from graders.insider_threat_grader import InsiderThreatGrader
 from graders.team_grader import TeamGrader
+from graders.apt_campaign_grader import APTCampaignGrader
 
 GRADER_REGISTRY = {
     "phishing": PhishingGrader,
@@ -13,6 +14,7 @@ GRADER_REGISTRY = {
     "team_phishing_escalation": TeamGrader,
     "team_lateral_team": TeamGrader,
     "red_team_generated": TeamGrader,
+    "apt_campaign": APTCampaignGrader,
 }
 
 __all__ = [
@@ -21,5 +23,6 @@ __all__ = [
     "QueueManagementGrader",
     "InsiderThreatGrader",
     "TeamGrader",
+    "APTCampaignGrader",
     "GRADER_REGISTRY",
 ]

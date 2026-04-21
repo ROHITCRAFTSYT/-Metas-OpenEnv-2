@@ -1,6 +1,11 @@
-# SOC-Triage-Gym v2 — Judge Demo Guide
+# SOC-Triage-Gym v3 — Judge Demo Guide
 
-Run these steps in order to see every major feature in under 5 minutes.
+Run these steps in order to see every major feature in under 7 minutes.
+For a one-shot theme-coverage manifest, hit `GET /themes/coverage` first.
+
+```bash
+curl -s http://localhost:7860/themes/coverage | python -m json.tool
+```
 
 ## Prerequisites
 
@@ -145,3 +150,76 @@ pytest tests/ -q
 | `/baseline` | POST | Run scripted oracle baseline |
 | `/generate_scenario` | POST | Generate adversarial red-team scenario |
 | `/inbox/{role}` | GET | Fetch ticket inbox for tier1/tier2/manager |
+
+---
+
+## Demo 7 — v3 Sub-Theme Sweep (3 min)
+
+**Halluminate — external NPC actors:**
+```bash
+curl -s -X POST http://localhost:7860/reset -H "Content-Type: application/json" \
+  -d '{"task_id":"queue_management","seed":7}' > /dev/null
+for i in $(seq 1 30); do
+  curl -s -X POST http://localhost:7860/step -H "Content-Type: application/json" \
+    -d '{"action_type":"noop"}' > /dev/null
+done
+curl -s http://localhost:7860/actors/messages | python -m json.tool | head -40
+```
+Expect to see ThreatIntel / Compliance / EndUser messages with a mix of
+`ground_truth_relevant: true` (real) and `false` (distractors).
+
+**Patronus — mid-episode schema drift:**
+```bash
+curl -s http://localhost:7860/policy/history | python -m json.tool
+```
+Shows 2 PolicyVersion entries with `description` fields like
+`"Severity tightening: HIGH now requires CVSS ≥ 8.5"`.
+
+**Mercor — token-scaled reward curve:**
+```bash
+for n in 5 50 150 400 800; do
+  TEXT=$(python -c "print('word '*$n)")
+  curl -s -X POST http://localhost:7860/reward/token_bonus \
+    -H "Content-Type: application/json" \
+    -d "{\"text\":\"$TEXT\",\"content_quality\":1.0}"
+  echo
+done
+```
+Bonus climbs from 0.0 → 0.10 as length crosses floor then saturates at cap.
+
+**Snorkel — rotate the expert judge:**
+```bash
+for r in 0 1 2 3; do
+  curl -s -X POST http://localhost:7860/experts/rotate \
+    -H "Content-Type: application/json" -d "{\"round_index\":$r}" \
+    | python -c "import sys,json; x=json.load(sys.stdin); print(r'round', x['round'], '→', x['expert']['display_name'])"
+done
+```
+
+**Scaler AI Labs — cross-app rule:**
+```bash
+curl -s "http://localhost:7860/tickets/can_disable_user?alert_id=ALT-XYZ"   # => allowed:false
+curl -s -X POST http://localhost:7860/tickets/open \
+  -H "Content-Type: application/json" \
+  -d '{"alert_id":"ALT-XYZ","priority":"P1","note":"audit trail"}'
+curl -s "http://localhost:7860/tickets/can_disable_user?alert_id=ALT-XYZ"   # => allowed:true
+```
+
+**Theme #2 — super-long-horizon APT campaign:**
+```bash
+curl -s -X POST http://localhost:7860/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_id":"apt_campaign","seed":42}' \
+  | python -c "import sys,json; o=json.load(sys.stdin); print('alerts:', len(o['alert_queue']), 'budget:', o['investigation_budget'])"
+```
+Should print `alerts: 60+ budget: 250`.
+
+---
+
+## Demo 8 — Deterministic Replay (30 sec)
+
+```bash
+python -m scripts.replay episodes/sample.jsonl --in-process
+```
+Re-runs a recorded episode byte-for-byte — judges can reproduce any reward
+number in the leaderboard themselves.

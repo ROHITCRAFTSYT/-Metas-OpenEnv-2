@@ -715,6 +715,118 @@ class RedTeamConfig(BaseModel):
 # Environment State Model
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# v3 Theme-Coverage Models (Halluminate / Patronus / Mercor / Snorkel)
+# ---------------------------------------------------------------------------
+
+class ActorKind(str, Enum):
+    """External (non-learning) simulated actors the agent must coordinate with."""
+    THREAT_INTEL = "threat_intel"
+    COMPLIANCE = "compliance"
+    END_USER = "end_user"
+
+
+class ActorMessage(BaseModel):
+    """
+    Unsolicited message from an external NPC actor (Halluminate sub-theme).
+    Surfaces in /inbox/{role} alongside TicketMessage.
+    """
+    model_config = ConfigDict(frozen=False)
+
+    message_id: str = Field(..., description="Unique message identifier")
+    actor: ActorKind = Field(..., description="Which external actor produced the message")
+    to_role: Optional[AgentRole] = Field(None, description="Intended recipient role (None = any)")
+    subject: str = Field(..., description="Short subject line")
+    body: str = Field(..., description="Full message body")
+    step_created: int = Field(..., description="Episode step when message was created")
+    requires_response: bool = Field(default=False, description="Whether the agent should answer back")
+    ground_truth_relevant: bool = Field(
+        default=False,
+        description="Whether engaging with this message is rewarded (True) or a distractor (False)"
+    )
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Actor-specific payload")
+
+
+class PolicyVersion(BaseModel):
+    """
+    Active policy/schema version in effect at a given step (Patronus sub-theme).
+    When the policy changes mid-episode, the grader must honour whichever policy
+    was active at action time.
+    """
+    model_config = ConfigDict(frozen=False)
+
+    version: int = Field(default=1, description="Monotonic policy version number")
+    step_activated: int = Field(default=0, description="Episode step at which this policy took effect")
+    severity_threshold_high: float = Field(
+        default=7.5,
+        description="CVSS threshold for 'high' severity — may drift mid-episode"
+    )
+    field_rename_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Field renames in effect, e.g. {'src_ip': 'source_address'}"
+    )
+    admin_must_escalate: bool = Field(
+        default=False,
+        description="Policy toggle: all admin-account alerts must be escalated"
+    )
+    description: str = Field(default="v1 baseline", description="Human-readable change summary")
+
+
+class RewardBlendConfig(BaseModel):
+    """
+    Reward blend configuration (Mercor sub-theme includes token scaling).
+    Exposed via POST /reward_config so judges can see the blend.
+    """
+    model_config = ConfigDict(frozen=False)
+
+    role_weight: float = Field(default=0.6, description="Weight on role-specific reward")
+    team_weight: float = Field(default=0.4, description="Weight on Δteam_F1 component")
+    token_scale_enabled: bool = Field(
+        default=True,
+        description="If True, long-form free-text actions earn a bounded length-scaled bonus"
+    )
+    token_scale_floor: int = Field(default=20, description="Below this many tokens, length bonus is 0")
+    token_scale_cap: int = Field(default=400, description="Saturation cap — beyond this, no extra reward")
+    token_scale_max_bonus: float = Field(
+        default=0.10,
+        description="Maximum additional reward from the token-quality scaler (Mercor)"
+    )
+
+
+class ExpertProfile(BaseModel):
+    """A simulated expert reviewer with fixed-per-round rubric weights (Snorkel sub-theme)."""
+    model_config = ConfigDict(frozen=False)
+
+    expert_id: str = Field(..., description="Stable expert identifier")
+    display_name: str = Field(..., description="Expert nickname shown to agent")
+    weight_accuracy: float = Field(default=0.4, ge=0.0, le=1.0)
+    weight_reasoning: float = Field(default=0.3, ge=0.0, le=1.0)
+    weight_actionability: float = Field(default=0.3, ge=0.0, le=1.0)
+    weight_speed: float = Field(default=0.0, ge=0.0, le=1.0, description="Bonus for short step-count")
+    weight_thoroughness: float = Field(default=0.0, ge=0.0, le=1.0, description="Bonus for wide tool coverage")
+    personality_note: str = Field(
+        default="",
+        description="Free-text hint surfaced to the agent so it can infer preference"
+    )
+
+
+class TicketSLA(BaseModel):
+    """Ticket in the enterprise ticketing app (Scaler AI Labs sub-theme)."""
+    model_config = ConfigDict(frozen=False)
+
+    ticket_id: str = Field(..., description="Unique enterprise ticket ID, e.g. TKT-00042")
+    alert_id: str = Field(..., description="Source alert")
+    priority: str = Field(default="P3", description="P1 (critical) to P4 (low)")
+    assignee_role: AgentRole = Field(..., description="Role currently assigned")
+    status: str = Field(default="open", description="open | in_progress | resolved | closed")
+    sla_steps_remaining: int = Field(default=40, description="Steps before SLA breach")
+    app_chain: List[str] = Field(
+        default_factory=lambda: ["SIEM"],
+        description="Apps touched during resolution: SIEM, EDR, IAM, TICKETING"
+    )
+    notes: List[str] = Field(default_factory=list, description="Append-only audit trail")
+
+
 class EnvironmentState(BaseModel):
     """Current episode state returned by GET /state."""
 

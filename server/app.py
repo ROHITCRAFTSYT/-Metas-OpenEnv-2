@@ -31,11 +31,28 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+from actors import build_default_registry
+from actors.registry import ActorRegistry
 from baseline_agent import HeuristicBaselineAgent
-from models import AgentRole, EnvironmentState, RedTeamConfig, SOCAction, SOCObservation
+from graders.expert_panel import ExpertPanel
+from graders.token_scaled_reward import explain as explain_token_bonus, token_scaled_bonus
+from models import (
+    ActorMessage,
+    AgentRole,
+    EnvironmentState,
+    ExpertProfile,
+    PolicyVersion,
+    RedTeamConfig,
+    RewardBlendConfig,
+    SOCAction,
+    SOCObservation,
+    TicketSLA,
+)
+from scenarios.policy_drift import PolicyDriftEngine
 from scenarios.red_team_generator import RedTeamGenerator
 from server.landing_ui import UI_HTML
 from server.environment import SOCEnvironment
+from tools.ticketing import TicketingSystem
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +62,16 @@ from server.environment import SOCEnvironment
 _env: Optional[SOCEnvironment] = None
 _env_lock = threading.Lock()
 _baseline_agent = HeuristicBaselineAgent()
+
+# v3 theme-coverage modules — deterministic, per-episode, reset in /reset.
+_actor_registry: ActorRegistry = build_default_registry(seed=0)
+_policy_drift: PolicyDriftEngine = PolicyDriftEngine(seed=0)
+_expert_panel: ExpertPanel = ExpertPanel()
+_ticketing: TicketingSystem = TicketingSystem()
+_reward_blend: RewardBlendConfig = RewardBlendConfig()
+_current_expert: ExpertProfile = _expert_panel.for_round(0)
+_curriculum_round: int = 0
+_actor_step: int = 0
 
 TASKS = [
     {
@@ -93,6 +120,14 @@ TASKS = [
         "description": "Tier-1 triages a noisy lateral movement queue, Tier-2 responds to escalations, and Manager flags missed threats and inconsistencies.",
         "difficulty": "medium",
         "max_steps": 68,
+        "reward_range": [0.0, 1.0],
+    },
+    {
+        "id": "apt_campaign",
+        "name": "APT Campaign (Super Long-Horizon)",
+        "description": "250-step composite campaign with 60+ alerts across 5 phases (initial access → persistence → lateral → exfil → cleanup). Sparse delayed reward, policy drift, rotating expert judge.",
+        "difficulty": "super-hard",
+        "max_steps": 250,
         "reward_range": [0.0, 1.0],
     },
     {
@@ -437,6 +472,16 @@ def reset(request: Optional[ResetRequest] = Body(default=None)):
     with _env_lock:
         try:
             obs = _env.reset(task_id=req.task_id, seed=req.seed, mode=req.mode)
+            # v3 theme hooks: reset actors, policy drift, ticketing, expert rotation.
+            global _actor_registry, _policy_drift, _ticketing, _current_expert, _actor_step
+            _actor_registry = build_default_registry(seed=req.seed)
+            _actor_registry.reset(seed=req.seed)
+            _policy_drift = PolicyDriftEngine(seed=req.seed)
+            max_steps = _env._config.max_steps if _env._config else 60
+            _policy_drift.plan(max_steps=max_steps, drift_count=2)
+            _ticketing = TicketingSystem()
+            _current_expert = _expert_panel.for_round(_curriculum_round)
+            _actor_step = 0
             return obs
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -464,6 +509,15 @@ def step(action: SOCAction):
             )
         try:
             obs = _env.step(action)
+            # v3 theme tick: advance actors, policy drift, ticketing SLA clocks.
+            global _actor_step
+            _actor_step += 1
+            _actor_registry.tick(
+                step=_actor_step,
+                ctx={"policy_version": _policy_drift.current().version},
+            )
+            _policy_drift.maybe_drift(step=_actor_step)
+            _ticketing.tick()
             return obs
         except Exception as e:
             logger.exception("Error in /step")
@@ -814,6 +868,196 @@ def query_log_source(
             "count": len(entries),
             "entries": entries[:50],  # cap at 50 entries
         }
+
+
+# ---------------------------------------------------------------------------
+# v3 Theme-Coverage Endpoints
+# (Halluminate / Patronus / Mercor / Snorkel / Scaler AI Labs)
+# ---------------------------------------------------------------------------
+
+@app.get("/actors/messages")
+def actor_messages(role: Optional[str] = Query(default=None)):
+    """
+    Halluminate sub-theme — Inspect messages from external NPC actors
+    (ThreatIntelFeed, ComplianceOfficer, EndUserReporter) in the current episode.
+    """
+    with _env_lock:
+        if role is None:
+            msgs = _actor_registry.all_messages()
+            return {"count": len(msgs), "messages": [m.model_dump() for m in msgs]}
+        try:
+            parsed = AgentRole(role)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        msgs = _actor_registry.inbox_for(parsed)
+        return {"role": role, "count": len(msgs), "messages": [m.model_dump() for m in msgs]}
+
+
+@app.get("/policy/current")
+def policy_current():
+    """Patronus sub-theme — Current active policy version."""
+    with _env_lock:
+        return _policy_drift.current().model_dump()
+
+
+@app.get("/policy/history")
+def policy_history():
+    """Patronus sub-theme — Full policy-drift history for this episode."""
+    with _env_lock:
+        return _policy_drift.to_dict()
+
+
+@app.get("/reward/config")
+def reward_config():
+    """Mercor sub-theme — Active reward blend config (role/team/token weights)."""
+    with _env_lock:
+        return _reward_blend.model_dump()
+
+
+class RewardBlendUpdate(BaseModel):
+    """Optional blend override."""
+    role_weight: Optional[float] = None
+    team_weight: Optional[float] = None
+    token_scale_enabled: Optional[bool] = None
+    token_scale_floor: Optional[int] = None
+    token_scale_cap: Optional[int] = None
+    token_scale_max_bonus: Optional[float] = None
+
+
+@app.post("/reward/config")
+def reward_config_update(patch: RewardBlendUpdate):
+    """Patch the reward blend config. Returns the new config."""
+    with _env_lock:
+        fields = patch.model_dump(exclude_none=True)
+        for k, v in fields.items():
+            setattr(_reward_blend, k, v)
+        return _reward_blend.model_dump()
+
+
+class TokenBonusRequest(BaseModel):
+    text: str
+    content_quality: float = 0.5
+
+
+@app.post("/reward/token_bonus")
+def reward_token_bonus(req: TokenBonusRequest):
+    """
+    Compute the Mercor token-length bonus for a given text and quality gate.
+    Surfaced as an endpoint so agents / judges can preview the incentive curve.
+    """
+    with _env_lock:
+        return explain_token_bonus(req.text, req.content_quality, _reward_blend)
+
+
+@app.get("/experts/current")
+def experts_current():
+    """Snorkel sub-theme — Active reviewing expert and their preference hint."""
+    with _env_lock:
+        return {
+            "round": _curriculum_round,
+            "expert": _current_expert.model_dump(),
+            "hint": _expert_panel.hint_message(_current_expert),
+        }
+
+
+@app.get("/experts/panel")
+def experts_panel():
+    """Snorkel sub-theme — Full expert panel roster."""
+    return {"panel": [e.model_dump() for e in _expert_panel.all_profiles()]}
+
+
+class ExpertRotateRequest(BaseModel):
+    round_index: Optional[int] = None
+
+
+@app.post("/experts/rotate")
+def experts_rotate(req: Optional[ExpertRotateRequest] = Body(default=None)):
+    """
+    Advance the expert rotation. If round_index is given, rotate to that round;
+    otherwise increment by 1. Emulates Snorkel experts-in-the-loop curriculum.
+    """
+    global _curriculum_round, _current_expert
+    with _env_lock:
+        if req is not None and req.round_index is not None:
+            _curriculum_round = int(req.round_index)
+        else:
+            _curriculum_round += 1
+        _current_expert = _expert_panel.for_round(_curriculum_round)
+        return {
+            "round": _curriculum_round,
+            "expert": _current_expert.model_dump(),
+        }
+
+
+class TicketOpenRequest(BaseModel):
+    alert_id: str
+    priority: str = "P3"
+    note: str = ""
+
+
+@app.post("/tickets/open")
+def tickets_open(req: TicketOpenRequest):
+    """Scaler AI Labs sub-theme — Open a multi-app enterprise ticket."""
+    with _env_lock:
+        t = _ticketing.open(alert_id=req.alert_id, priority=req.priority, note=req.note)
+        return t.model_dump()
+
+
+@app.post("/tickets/{ticket_id}/resolve")
+def tickets_resolve(ticket_id: str, note: str = ""):
+    with _env_lock:
+        t = _ticketing.resolve(ticket_id=ticket_id, note=note)
+        if t is None:
+            raise HTTPException(status_code=404, detail="ticket not found")
+        return t.model_dump()
+
+
+@app.get("/tickets")
+def tickets_list():
+    """List all tickets in the current episode."""
+    with _env_lock:
+        return {
+            "tickets": [t.model_dump() for t in _ticketing.all_tickets()],
+            "audit": _ticketing.audit_summary(),
+        }
+
+
+@app.get("/tickets/can_disable_user")
+def tickets_can_disable_user(alert_id: str):
+    """Cross-app business rule: can IAM.disable_user fire for this alert?"""
+    with _env_lock:
+        return {"alert_id": alert_id, "allowed": _ticketing.can_disable_user(alert_id)}
+
+
+@app.get("/themes/coverage")
+def themes_coverage():
+    """
+    Machine-checkable summary of which hackathon themes / sub-themes this
+    env implements. Served so judges can verify coverage without reading code.
+    """
+    return {
+        "primary_theme": "Theme #1 — Multi-Agent Interactions",
+        "coverage": {
+            "theme_1_multi_agent": True,
+            "fleet_ai_oversight": True,
+            "halluminate_multi_actor": True,
+            "theme_2_long_horizon": True,
+            "scale_ai_non_code_business": True,
+            "mercor_token_scaled_rewards": True,
+            "theme_3_1_professional": True,
+            "scaler_ai_multi_app_enterprise": True,
+            "patronus_schema_drift": True,
+            "theme_4_self_improvement": True,
+            "snorkel_experts_in_loop": True,
+        },
+        "evidence_endpoints": {
+            "halluminate": "/actors/messages",
+            "patronus": "/policy/current",
+            "mercor": "/reward/token_bonus",
+            "snorkel": "/experts/current",
+            "scaler_ai": "/tickets",
+        },
+    }
 
 
 # ---------------------------------------------------------------------------

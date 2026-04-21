@@ -5,6 +5,7 @@ from scenarios.queue_management import QueueManagementScenario
 from scenarios.insider_threat import InsiderThreatScenario
 from scenarios.team_phishing_escalation import TeamPhishingEscalationScenario
 from scenarios.team_lateral_team import TeamLateralTeamScenario
+from scenarios.apt_campaign import APTCampaignScenario
 
 SCENARIO_REGISTRY = {
     "phishing": PhishingScenario,
@@ -13,6 +14,7 @@ SCENARIO_REGISTRY = {
     "insider_threat": InsiderThreatScenario,
     "team_phishing_escalation": TeamPhishingEscalationScenario,
     "team_lateral_team": TeamLateralTeamScenario,
+    "apt_campaign": APTCampaignScenario,
 }
 
 __all__ = [
@@ -22,5 +24,6 @@ __all__ = [
     "InsiderThreatScenario",
     "TeamPhishingEscalationScenario",
     "TeamLateralTeamScenario",
+    "APTCampaignScenario",
     "SCENARIO_REGISTRY",
 ]
