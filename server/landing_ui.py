@@ -548,38 +548,46 @@ button:disabled{opacity:.5;cursor:not-allowed;transform:none}
   <div class="frame">
     <section class="hero">
       <div class="hero-main">
-        <div class="eyebrow">Security Simulation Desk</div>
-        <h1>SOC Triage Gym</h1>
-        <p class="lede">A distinct operations-style interface for evaluating analyst agents across phishing, kill chains, noisy queues, and insider threat investigations. Start an episode, inspect the queue, and grade the baseline without dropping into raw endpoint output.</p>
+        <div class="eyebrow">OpenEnv Hackathon Apr '26 · Theme #1 Multi-Agent</div>
+        <h1>SOC Triage Gym <span style="font-size:.55em;color:var(--accent-2);vertical-align:super">v3</span></h1>
+        <p class="lede">The first OpenEnv environment that trains a <b>3-tier SOC team</b> (Tier-1 → Tier-2 → Manager) as coordinated agents — not a single analyst — across 8 tasks spanning a 15-step phishing triage up to a <b>250-step APT campaign</b>. Programmatic graders give verifiable rewards (<b>RLVR</b>); an adaptive Red-Team Generator co-evolves difficulty with the blue team (<b>RLVE</b>).</p>
         <div class="hero-strip">
           <div class="strip-card">
-            <div class="strip-kicker">Scenarios</div>
-            <div class="strip-value">4</div>
-            <div class="muted">easy to expert tasks</div>
+            <div class="strip-kicker">Tasks</div>
+            <div class="strip-value">8</div>
+            <div class="muted">easy → super-hard · 250-step APT</div>
           </div>
           <div class="strip-card">
-            <div class="strip-kicker">Workflow</div>
-            <div class="strip-value mono">REST</div>
-            <div class="muted">reset, step, state, baseline</div>
+            <div class="strip-kicker">Reward Fns</div>
+            <div class="strip-value">6+</div>
+            <div class="muted">layered RLVR verifiers</div>
           </div>
           <div class="strip-card">
-            <div class="strip-kicker">Focus</div>
-            <div class="strip-value">SOC</div>
-            <div class="muted">triage quality and signal handling</div>
+            <div class="strip-kicker">Defenses</div>
+            <div class="strip-value">6</div>
+            <div class="muted">reward-hack regression tests</div>
+          </div>
+          <div class="strip-card">
+            <div class="strip-kicker">Tests</div>
+            <div class="strip-value">108</div>
+            <div class="muted">determinism + theme coverage</div>
           </div>
         </div>
       </div>
       <div class="hero-side">
         <div class="bulletin">
           <div class="bulletin-head">
-            <h2>Operations Bulletin</h2>
-            <span class="stamp">Live App</span>
+            <h2>Judge Fast-Path</h2>
+            <span class="stamp">§19</span>
           </div>
-          <p class="muted">This Space is designed like a field desk rather than a product brochure: quick launch controls, readable status, and direct evidence of how the environment behaves.</p>
+          <p class="muted">One-command walkthrough of the hackathon §19 demo format:</p>
+          <p class="mono" style="font-size:13px">python demo.py</p>
+          <p class="muted" style="margin-top:8px">Runs baseline → verifier breakdown → trained-agent stub → measurable delta → safeguards manifest.</p>
         </div>
         <div class="card">
-          <h2>What Agents Can Do</h2>
-          <p class="mono">enrich_indicator, query_logs, correlate_alerts, check_asset, check_user, classify_alert, map_technique, recommend_action, escalate</p>
+          <h2>Theme Coverage</h2>
+          <p>Primary: <b>Theme #1 Multi-Agent</b>. Sub-theme prizes: <b>Fleet AI · Halluminate · Mercor · Patronus · Scaler AI · Scale AI · Snorkel</b>.</p>
+          <p><a href="/themes/coverage" class="mono" style="color:var(--accent-2)">GET /themes/coverage</a> — machine-checkable manifest.</p>
         </div>
       </div>
     </section>

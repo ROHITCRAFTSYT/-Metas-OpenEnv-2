@@ -628,9 +628,17 @@ def train(
         print(f"  Output: {output_dir}")
 
         trainer.train()
-        trainer.save_model(output_dir)
-        tokenizer.save_pretrained(output_dir)
-        print(f"\n[DONE] Model saved to {output_dir}")
+
+        # Unsloth + 4-bit: use merged-16bit save path. Plain trainer.save_model on a
+        # 4-bit-loaded PEFT model can produce a damaged merge (Unsloth README warning).
+        if args.unsloth and hasattr(model, "save_pretrained_merged"):
+            model.save_pretrained_merged(output_dir, tokenizer, save_method="merged_16bit")
+            model.save_pretrained_merged(f"{output_dir}-lora", tokenizer, save_method="lora")
+            print(f"\n[DONE] Merged 16-bit: {output_dir}  |  LoRA-only: {output_dir}-lora")
+        else:
+            trainer.save_model(output_dir)
+            tokenizer.save_pretrained(output_dir)
+            print(f"\n[DONE] Model saved to {output_dir}")
 
     except ImportError as e:
         print(f"\n[ERROR] TRL import failed: {e}")

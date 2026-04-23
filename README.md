@@ -24,7 +24,24 @@ Primary: **Theme #1 Multi-Agent Interactions**
 Sub-theme bonus prizes claimed: **Fleet AI** · **Halluminate** · **Mercor** · **Patronus AI** · **Scaler AI Labs** · **Snorkel AI**
 Also covers: **Theme #2 Long-Horizon Planning** · **Theme #3.1 Professional Tasks** · **Theme #4 Self-Improvement**
 
-The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **9 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox.
+The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **8 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox. Training uses **RLVR** (verifiable programmatic graders) inside an **RLVE** loop (adaptive Red-Team Generator).
+
+> **Judge fast-path:** `python demo.py` — runs the full hackathon §19 walkthrough (baseline → verifier → trained → delta → safeguards) in one command. Machine-checkable theme manifest at `GET /themes/coverage`.
+
+### Why this project wins
+
+| Guide §19 criterion | How this project answers it | Evidence |
+|---|---|---|
+| Clear environment design | OpenEnv-standard `/reset`, `/step`, `/state`; three-role team with ticket bus and phase state machine | [server/environment.py](server/environment.py), [server/app.py](server/app.py) |
+| Objective reward functions | 6+ layered programmatic graders — no LLM-only scoring | [graders/](graders/) |
+| Evidence model improved | Per-step GRPO training script + deterministic multi-seed benchmark | [train_grpo.py](train_grpo.py), [benchmark.py](benchmark.py) |
+| Prevention against reward hacking | 6 named defenses locked in as regression tests | [tests/test_themes_coverage.py](tests/test_themes_coverage.py) |
+| Reproducible deployment | HF Space (Docker SDK, port 7860); `docker run` + Uvicorn both supported | [Dockerfile](Dockerfile), [openenv.yaml](openenv.yaml) |
+| Sharp demo | One-command `demo.py` hitting all 5 §19 beats | [demo.py](demo.py) |
+
+### Breadth — full hackathon theme coverage in one Space
+
+Primary: **Theme #1 Multi-Agent**. Also covers **Theme #2** (250-step APT), **Theme #3.1 Professional**, **Theme #4 Self-Improvement**, plus sub-theme prizes for **Fleet AI · Halluminate · Mercor · Patronus · Scaler AI · Scale AI · Snorkel** — see [Theme Coverage](#theme-coverage) table.
 
 A real Security Operations Center has three tiers: Tier-1 triages alerts and escalates, Tier-2 contains confirmed threats, and a Manager audits the team's decisions. SOC-Triage-Gym v2 models all three roles with a live ticket bus, a phase state machine, and an LLM-based manager judge. The reward signal is a blend of individual role performance and team F1 — so an agent that maximizes personal score at the expense of team outcome is penalized.
 
@@ -122,6 +139,11 @@ See [`soc_triage_gym_v2_training.ipynb`](soc_triage_gym_v2_training.ipynb) for t
 
 ```bash
 pip install -e ".[dev]"
+
+# Fastest path — runs server + hits all 5 §19 judge-demo beats in one command:
+python demo.py
+
+# Or start the server and drive it manually:
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
@@ -144,7 +166,28 @@ curl -X POST http://localhost:7860/reset \
 python inference.py
 ```
 
-See [DEMO.md](DEMO.md) for step-by-step judge demo instructions.
+---
+
+## Judge Demo (guide §19 format)
+
+1. **Baseline attempt** — run the scripted oracle on `phishing`:
+   ```bash
+   python inference.py --task phishing --seed 42
+   ```
+2. **Verifier breakdown** — inspect per-component rewards from the grader:
+   ```bash
+   curl -X POST http://localhost:7860/grader \
+     -H "Content-Type: application/json" -d '{"task_id":"phishing"}'
+   ```
+3. **Trained attempt** — load a GRPO-trained checkpoint and run the same seed (see [`soc_triage_gym_v2_training.ipynb`](soc_triage_gym_v2_training.ipynb)).
+4. **Measurable delta** — compare rewards end-to-end:
+   ```bash
+   python benchmark.py --task phishing --seed 42
+   ```
+5. **Safeguards** — view active reward-hacking defenses and theme manifest:
+   ```bash
+   curl http://localhost:7860/themes/coverage | jq
+   ```
 
 ---
 
@@ -222,12 +265,38 @@ soc-triage-gym/
   tests/            108 tests (incl. test_themes_coverage.py regression pack)
   scripts/          gen_plots.py (reward curves), replay.py (deterministic CLI)
   models.py         Pydantic v2 types (incl. ActorMessage, PolicyVersion, RewardBlendConfig, ExpertProfile, TicketSLA)
-  train_grpo.py     Per-step GRPO training script
+  train_grpo.py     Per-step GRPO training script (Unsloth merged-16bit save path)
   inference.py      Scripted oracle baseline
+  benchmark.py      Multi-seed determinism + score benchmark across 5 solo tasks
+  demo.py           One-command judge demo (guide §19 format)
   openenv.yaml      OpenEnv metadata
-  PITCH.md          3-min pitch script
-  DEMO.md           Judge demo walkthrough
 ```
+
+---
+
+## RLVR / RLVE Mapping
+
+| Concept | Where it lives |
+|---|---|
+| **RLVR** — verifiable rewards from programmatic checks | [`graders/`](graders/) — 8 per-task graders + [`graders/token_scaled_reward.py`](graders/token_scaled_reward.py) + [`graders/expert_panel.py`](graders/expert_panel.py) |
+| **RLVE** — adaptive verifiable *environment* (difficulty tracks policy) | [`scenarios/red_team_generator.py`](scenarios/red_team_generator.py) |
+| **Step-level rewards** — dense per-action signal, not only episode outcome | `SOCEnvironment.step()` in [`server/environment.py`](server/environment.py); per-step GRPO in [`train_grpo.py`](train_grpo.py) |
+| **Multi-verifier layering** — outcome + format + anti-cheat + LLM judge | [`graders/manager_judge.py`](graders/manager_judge.py) combined with hard-check graders |
+
+---
+
+## Reward-Hacking Defenses
+
+The hackathon guide warns: "do not optimize a reward you have not tried to break yourself." Regression tests in [`tests/test_themes_coverage.py`](tests/test_themes_coverage.py) lock in adversarial checks:
+
+- **`close_case` idempotency** — duplicate close_case calls cannot inflate reward.
+- **Team F1 delta, not sticky value** — NOOP-spamming after a correct classification yields zero team reward.
+- **Zero-escalation guard** — refusing to ever escalate is penalized.
+- **Over-escalation threshold** — escalating >25% of alerts is penalized.
+- **Manager judge fallback** — when the LLM judge is unavailable, a deterministic rubric prevents reward vacuum.
+- **Policy-drift active-at semantics** — grader honours the policy version that was active at action time, blocking retroactive rule-gaming.
+
+`GET /themes/coverage` exposes these names so judges can verify without running pytest.
 
 ---
 
