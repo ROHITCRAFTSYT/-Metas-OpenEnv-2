@@ -80,6 +80,8 @@ Team F1 uses delta (not sticky value) — NOOP-spamming after a correct classifi
 | `apt_campaign` | solo | 60+ | **250** | super-hard |
 | `red_team_generated` | team | dynamic | 30–250 | adaptive |
 
+> **Scoring note for `red_team_generated`:** reward here is the *red-team* reward — the inverse of blue-team performance, plus a novelty bonus when blue lands in the trainable sweet spot `[0.35, 0.65]`. A low score means the blue oracle beat the generated scenario; a high score means the generator outsmarted the defender. See [graders/red_team_grader.py](graders/red_team_grader.py).
+
 ---
 
 ## Team Mode
@@ -188,6 +190,14 @@ python inference.py
    ```bash
    curl http://localhost:7860/themes/coverage | jq
    ```
+
+### Oracle reward curve
+
+Running `python train_grpo.py --role tier1 --dry-run` produces the per-episode oracle reward curve across all tier-1 tasks and seeds. The trained model's target is to match or beat this line:
+
+![Oracle reward curve — tier1](reward_curve_tier1_oracle.png)
+
+Oracle mean across 20 episodes (phishing, team_phishing_escalation, team_lateral_team) = **0.90**. Use this as the GRPO target when training.
 
 ---
 
