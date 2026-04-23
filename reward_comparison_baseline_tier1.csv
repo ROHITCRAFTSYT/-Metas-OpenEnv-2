@@ -1,0 +1,17 @@
+episode,task_id,seed,random,oracle,delta
+1,team_phishing_escalation,42,0.001,0.999,0.998
+2,team_phishing_escalation,43,0.001,0.999,0.998
+3,team_phishing_escalation,44,0.999,0.999,0.0
+4,team_phishing_escalation,45,0.001,0.999,0.998
+5,team_phishing_escalation,46,0.001,0.999,0.998
+6,team_phishing_escalation,47,0.001,0.999,0.998
+7,team_phishing_escalation,48,0.001,0.999,0.998
+8,team_phishing_escalation,49,0.001,0.999,0.998
+9,team_lateral_team,42,0.001,0.8,0.799
+10,team_lateral_team,43,0.001,0.8,0.799
+11,team_lateral_team,44,0.001,0.8,0.799
+12,team_lateral_team,45,0.001,0.8,0.799
+13,team_lateral_team,46,0.001,0.8,0.799
+14,team_lateral_team,47,0.001,0.8,0.799
+15,team_lateral_team,48,0.001,0.8,0.799
+16,team_lateral_team,49,0.001,0.8,0.799

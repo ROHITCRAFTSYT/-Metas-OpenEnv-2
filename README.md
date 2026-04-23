@@ -199,6 +199,20 @@ Running `python train_grpo.py --role tier1 --dry-run` produces the per-episode o
 
 Oracle mean across 20 episodes (phishing, team_phishing_escalation, team_lateral_team) = **0.90**. Use this as the GRPO target when training.
 
+### Baseline gap — random vs oracle
+
+`python train_grpo.py --compare --role tier1` bounds the problem on both sides: a uniform-random policy is the floor an untrained LLM competes against; the scripted oracle is the ceiling a trained LLM should approach. The gap between the two lines is the measurable headroom GRPO has to close — the 20 %-weighted *Showing Improvement in Rewards* criterion lives entirely inside this band.
+
+![Baseline gap — tier1 random vs oracle](reward_comparison_baseline_tier1.png)
+
+| Policy | Mean task score | Notes |
+| --- | --- | --- |
+| Random (untrained floor) | **0.063** | uniform over role-valid action types |
+| Oracle (scripted ceiling) | **0.900** | heuristic defined in `train_grpo.py:oracle_action` |
+| **Learnable gap (Δ)** | **+0.836** | headroom for an RL-trained policy |
+
+Raw per-episode numbers are committed at `reward_comparison_baseline_tier1.csv`.
+
 ---
 
 ## API
