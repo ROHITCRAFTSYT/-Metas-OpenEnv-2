@@ -884,10 +884,11 @@ footer .sigline b{color:var(--ink);font-weight:600}
       <em>guide §19</em> judge demo in a single command.
     </p>
     <div class="cta-row">
-      <a class="cta primary" href="/docs"><span>Open Spec</span><span class="arrow">→</span></a>
-      <a class="cta" href="/themes/coverage"><span>Theme Manifest</span><span class="arrow">→</span></a>
-      <a class="cta" href="/tasks"><span>Tasks JSON</span><span class="arrow">→</span></a>
-      <a class="cta" href="/metadata"><span>Metadata</span><span class="arrow">→</span></a>
+      <a class="cta primary" href="/docs"><span>API Spec</span><span class="arrow">→</span></a>
+      <a class="cta" href="/ui/themes"><span>Theme Manifest</span><span class="arrow">→</span></a>
+      <a class="cta" href="/ui/tasks"><span>Task Catalogue</span><span class="arrow">→</span></a>
+      <a class="cta" href="/ui/metadata"><span>Metadata</span><span class="arrow">→</span></a>
+      <a class="cta" href="/ui/state"><span>Live State</span><span class="arrow">→</span></a>
       <a class="cta" href="https://github.com/ROHITCRAFTSYT/-Metas-OpenEnv-2" target="_blank" rel="noopener"><span>Source · GitHub</span><span class="arrow">↗</span></a>
     </div>
   </div>
