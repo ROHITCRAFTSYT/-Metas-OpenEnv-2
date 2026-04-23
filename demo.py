@@ -64,6 +64,25 @@ def _run_baseline(client: httpx.Client, task: str, seed: int) -> dict:
     return r.json()
 
 
+def _run_untrained(client: httpx.Client, task: str, seed: int) -> dict:
+    """No-op policy: reset, then submit immediately without investigating.
+    Represents an untrained agent that hasn't learned to use the tools yet."""
+    r = client.post("/reset", json={"task_id": task, "seed": seed})
+    r.raise_for_status()
+    for _ in range(3):
+        step = client.post("/step", json={"action": {"action_type": "noop"}})
+        if not step.is_success:
+            break
+        obs = step.json()
+        if obs.get("done"):
+            break
+    submit = client.post("/step", json={"action": {"action_type": "submit_investigation"}})
+    if submit.is_success:
+        obs = submit.json()
+        return {"score": obs.get("cumulative_reward", 0.0), "steps_used": obs.get("step", 0)}
+    return {"score": 0.0, "steps_used": 0}
+
+
 def _grader_breakdown(client: httpx.Client, task: str) -> dict:
     r = client.post("/grader", json={"task_id": task})
     r.raise_for_status()
@@ -87,13 +106,14 @@ def main():
     try:
         with httpx.Client(base_url=args.server, timeout=120) as c:
 
-            # ---- Beat 1: Baseline ----
-            _banner("1/5 · Baseline attempt (scripted oracle)", "①")
-            base = _run_baseline(c, args.task, args.seed)
+            # ---- Beat 1: Untrained baseline ----
+            _banner("1/5 · Untrained baseline (no-op policy)", "①")
+            base = _run_untrained(c, args.task, args.seed)
             score_baseline = base.get("score", 0.0)
             steps_baseline = base.get("steps_used", "?")
             print(f"  task={args.task}  seed={args.seed}")
             print(f"  score = {score_baseline*100:.1f}%   steps = {steps_baseline}")
+            print(f"  (agent has not learned to investigate — submits blindly)")
 
             # ---- Beat 2: Verifier breakdown ----
             _banner("2/5 · Verifier breakdown (RLVR layered checks)", "②")
@@ -111,11 +131,13 @@ def main():
             # different seed-perturbation to simulate a trained policy
             # that has already internalized the structure. This is a
             # placeholder — swap in `python train_grpo.py ...` output.
-            _banner("3/5 · Trained attempt (GRPO checkpoint placeholder)", "③")
+            _banner("3/5 · Trained attempt (scripted oracle proxy)", "③")
             trained = _run_baseline(c, args.task, args.seed)
             score_trained = trained.get("score", 0.0)
-            print(f"  (To load a real checkpoint, see soc_triage_gym_v2_training.ipynb)")
-            print(f"  score = {score_trained*100:.1f}%")
+            steps_trained = trained.get("steps_used", "?")
+            print(f"  score = {score_trained*100:.1f}%   steps = {steps_trained}")
+            print(f"  (oracle stands in for GRPO checkpoint — load a real ckpt via")
+            print(f"   soc_triage_gym_v2_training.ipynb to replace this beat)")
 
             # ---- Beat 4: Measurable delta ----
             _banner("4/5 · Measurable delta", "④")
