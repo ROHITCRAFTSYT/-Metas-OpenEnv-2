@@ -144,7 +144,7 @@ endpoints:
   experts_rotate:     POST /experts/rotate
   experts_panel:      GET  /experts/panel
   tickets_list:       GET  /tickets
-  tickets_open:       GET  /tickets/open
+  tickets_open:       POST /tickets/open
   tickets_resolve:    POST /tickets/{id}/resolve
   tickets_can_disable_user: GET /tickets/can_disable_user
   themes_coverage:    GET  /themes/coverage
