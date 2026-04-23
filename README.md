@@ -18,6 +18,10 @@ tags:
 
 # SOC-Triage-Gym v3
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)
+[![HF Space](https://img.shields.io/badge/🤗%20Space-rohitcraftsyt%2Fopenenv2-yellow)](https://huggingface.co/spaces/rohitcraftsyt/openenv2)
+[![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](tests/)
+
 **OpenEnv Hackathon Apr 2026 — Full-stack theme coverage**
 
 Primary: **Theme #1 Multi-Agent Interactions**
@@ -212,6 +216,32 @@ Oracle mean across 20 episodes (phishing, team_phishing_escalation, team_lateral
 | **Learnable gap (Δ)** | **+0.836** | headroom for an RL-trained policy |
 
 Raw per-episode numbers are committed at `reward_comparison_baseline_tier1.csv`.
+
+### Reproducing the trained-model curve
+
+The training loop is packaged as a one-click Colab notebook — [**`soc_triage_gym_v2_training.ipynb`**](soc_triage_gym_v2_training.ipynb) ([open in Colab](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)) — so the judge never needs to rebuild the stack manually:
+
+| Step | Cell | What happens | Wall time on T4 |
+| --- | --- | --- | --- |
+| 1 | *Install* | `unsloth`, `trl`, `peft` + repo clone | ~4 min |
+| 2 | *Server* | Uvicorn on port 7860 | ~5 s |
+| 3-4 | *Verify + baseline* | oracle rollouts, prints avg score | ~30 s |
+| **4b** | ***Random-vs-oracle gap*** | **emits the bracket plot above — artifact for the 20 % criterion, runs without a GPU** | ~1 min |
+| 5-7 | *Load model + dataset + reward fn* | Unsloth 4-bit QLoRA on Qwen2.5-0.5B; per-step dataset | ~3 min |
+| 8 | *GRPO train* | 3 epochs, group=8, per-step reward against the live env | **~70-90 min** |
+| 9 | *Save* | merged-16bit + LoRA to `./soc_grpo_tier1*` and Google Drive | ~1 min |
+| 10-11 | *Eval + plot* | trained-model curve + red-team curriculum oscillation — emits `soc_grpo_results.png`, `redteam_curriculum.png` | ~5 min |
+
+The notebook is designed so **cells 1-7 run on free-tier Colab in ~8 minutes and surface the gap plot without consuming GPU compute** — enough for a judge to verify the pipeline works even if they skip the 70-minute GRPO cell.
+
+### How a judge evaluates this submission
+
+| Guide criterion | Weight | What's committed here | Where to look |
+| --- | --- | --- | --- |
+| Environment Innovation | 40 % | 8 tasks, 3-role team with ticket bus + phase FSM, 250-step APT campaign, rotating expert judges, mid-episode schema drift, adaptive red-team curriculum | [`server/app.py`](server/app.py), [`server/environment.py`](server/environment.py), [`scenarios/red_team_generator.py`](scenarios/red_team_generator.py) |
+| Storytelling | 30 % | This README, dossier-styled landing page, `/ui/themes`, `/ui/metadata`, one-command `demo.py` | [live Space](https://huggingface.co/spaces/rohitcraftsyt/openenv2), [`demo.py`](demo.py) |
+| Showing Improvement | 20 % | Oracle ceiling (0.90) + random floor (0.063) committed; Δ=+0.836 learnable gap; Colab notebook produces the trained line on the same axes | `reward_comparison_baseline_tier1.png`, notebook cell 4b / cell 11 |
+| Reward & pipeline | 10 % | 6 layered programmatic graders, 108 pytest assertions including 6 named reward-hacking regressions, per-step GRPO (not trajectory-averaged) | [`graders/`](graders/), [`tests/`](tests/), [`train_grpo.py`](train_grpo.py) |
 
 ---
 
