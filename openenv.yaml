@@ -4,8 +4,10 @@ description: >
   A reinforcement learning environment simulating a Security Operations Center (SOC) analyst.
   An AI agent receives SIEM alerts and must enrich threat indicators, query log sources,
   correlate events across alerts, classify alerts as TP/FP/BTP, map findings to MITRE ATT&CK,
-  and recommend containment actions. Round 2 adds team-mode episodes with Tier-1, Tier-2,
-  SOC Manager oversight, inter-agent tickets, and adaptive red-team generated scenarios.
+  and recommend containment actions. Team-mode episodes add Tier-1, Tier-2, and SOC Manager
+  roles with inter-agent tickets. Programmatic graders provide verifiable rewards (RLVR);
+  the adaptive Red-Team Generator makes the task source itself dynamic (RLVE), keeping the
+  blue-team near the learning frontier.
 
 author: rohitcraftsyt
 
@@ -78,6 +80,16 @@ tasks:
     max_steps: 80
     reward_range: [0.0, 1.0]
 
+  - id: apt_campaign
+    name: "APT Campaign (Super Long-Horizon)"
+    description: >
+      250-step composite APT campaign with 60+ alerts across 5 phases
+      (initial access → persistence → lateral → exfil → cleanup).
+      Sparse delayed narrative reward, policy drift, rotating expert judge.
+    difficulty: super-hard
+    max_steps: 250
+    reward_range: [0.0, 1.0]
+
   - id: team_phishing_escalation
     name: "Team Phishing Escalation"
     description: >
@@ -113,6 +125,8 @@ reward:
 
 endpoints:
   health:   GET  /health
+  metadata: GET  /metadata
+  schema:   GET  /schema
   reset:    POST /reset
   step:     POST /step
   state:    GET  /state
@@ -120,4 +134,18 @@ endpoints:
   grader:   POST /grader
   baseline: POST /baseline
   generate_scenario: POST /generate_scenario
-  inbox: GET /inbox/{role}
+  inbox:              GET  /inbox/{role}
+  actors_messages:    GET  /actors/messages
+  policy_current:     GET  /policy/current
+  policy_history:     GET  /policy/history
+  reward_config:      GET  /reward/config
+  reward_token_bonus: POST /reward/token_bonus
+  experts_current:    GET  /experts/current
+  experts_rotate:     POST /experts/rotate
+  experts_panel:      GET  /experts/panel
+  tickets_list:       GET  /tickets
+  tickets_open:       GET  /tickets/open
+  tickets_resolve:    POST /tickets/{id}/resolve
+  tickets_can_disable_user: GET /tickets/can_disable_user
+  themes_coverage:    GET  /themes/coverage
+  mcp:                POST /mcp

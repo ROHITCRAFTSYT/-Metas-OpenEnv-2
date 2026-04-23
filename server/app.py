@@ -1057,6 +1057,18 @@ def themes_coverage():
             "snorkel": "/experts/current",
             "scaler_ai": "/tickets",
         },
+        "rlvr_rlve": {
+            "rlvr_verifiers": "graders/",
+            "rlve_adaptive_environment": "scenarios/red_team_generator.py",
+        },
+        "reward_hacking_defenses": [
+            "close_case_idempotency",
+            "team_f1_delta_not_sticky",
+            "zero_escalation_guard",
+            "over_escalation_threshold",
+            "manager_judge_fallback",
+            "policy_drift_active_at_semantics",
+        ],
     }
 
 
