@@ -46,11 +46,20 @@ import httpx
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:7860")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# Team tasks ordered by complexity — train easier first
-TIER1_TASKS = ["team_phishing_escalation", "team_lateral_team"]
-TIER2_TASKS = ["team_phishing_escalation", "team_lateral_team"]
-MANAGER_TASKS = ["team_phishing_escalation", "team_lateral_team"]
-SEEDS = list(range(42, 42 + 50))  # 50 unique episodes per training run
+# Team tasks ordered by complexity — train easier first.
+# Overridable via SOC_TRAIN_TASKS env var (comma-separated) for quick-mode training
+# on T4 where the full 2-task curriculum would take >10 hours per role.
+_default_tier1 = ["team_phishing_escalation", "team_lateral_team"]
+_env_tasks = os.getenv("SOC_TRAIN_TASKS")
+if _env_tasks:
+    TIER1_TASKS = [t.strip() for t in _env_tasks.split(",") if t.strip()]
+else:
+    TIER1_TASKS = _default_tier1
+TIER2_TASKS = _default_tier1
+MANAGER_TASKS = _default_tier1
+# Seeds overridable via SOC_TRAIN_N_SEEDS (e.g. =15 for quick mode).
+_n_seeds = int(os.getenv("SOC_TRAIN_N_SEEDS", "50"))
+SEEDS = list(range(42, 42 + _n_seeds))
 
 # Per-role system prompts (must match inference.py)
 ROLE_SYSTEM_PROMPTS = {
@@ -500,7 +509,8 @@ def train(
     print(f"{'='*60}\n")
 
     # ---- Connect to environment server ----
-    client = httpx.Client(base_url=SERVER_URL, timeout=30.0)
+    # 180s so long team_lateral_team rollouts (68 steps) don't trip during dataset build.
+    client = httpx.Client(base_url=SERVER_URL, timeout=180.0)
     try:
         health = client.get("/health")
         health.raise_for_status()

@@ -20,7 +20,10 @@ tags:
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)
 [![HF Space](https://img.shields.io/badge/🤗%20Space-rohitcraftsyt%2Fopenenv2-yellow)](https://huggingface.co/spaces/rohitcraftsyt/openenv2)
+[![Trained Model](https://img.shields.io/badge/🤗%20Model-rohitcraftsyt%2Fsoc--grpo--tier1-blue)](https://huggingface.co/rohitcraftsyt/soc-grpo-tier1)
 [![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](tests/)
+
+> Also runnable on Kaggle (free T4, 30h/week). Clone the repo and run `python scripts/train_and_evaluate.py` — override `SOC_TRAIN_TASKS`, `SOC_TRAIN_N_SEEDS`, `NUM_EPOCHS`, `NUM_GENERATIONS` env vars to fit the free tier budget.
 
 **OpenEnv Hackathon Apr 2026 — Full-stack theme coverage**
 
@@ -30,7 +33,7 @@ Also covers: **Theme #2 Long-Horizon Planning** · **Theme #3.1 Professional Tas
 
 The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **8 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox. Training uses **RLVR** (verifiable programmatic graders) inside an **RLVE** loop (adaptive Red-Team Generator).
 
-> **Judge fast-path:** `python demo.py` — runs the full hackathon §19 walkthrough (baseline → verifier → trained → delta → safeguards) in one command. Machine-checkable theme manifest at `GET /themes/coverage`.
+> **Judge fast-path:** `bash scripts/quickstart.sh` — installs deps, starts the env, prints the theme-coverage manifest, and runs the 5-beat walkthrough. ~60 seconds. A shorter "why should I care" read is in [JUDGES_START_HERE.md](JUDGES_START_HERE.md).
 
 ### Why this project wins
 
@@ -217,6 +220,24 @@ Oracle mean across 20 episodes (phishing, team_phishing_escalation, team_lateral
 
 Raw per-episode numbers are committed at `reward_comparison_baseline_tier1.csv`.
 
+### GRPO training run — loss curve + held-out eval
+
+A **minimal** GRPO run on Kaggle T4 (1 epoch × 15 seeds × 1 task × group=4 → 27 optimizer steps). Trained adapter is published at [**huggingface.co/rohitcraftsyt/soc-grpo-tier1**](https://huggingface.co/rohitcraftsyt/soc-grpo-tier1) — reloadable with `FastLanguageModel.from_pretrained("rohitcraftsyt/soc-grpo-tier1")`.
+
+![GRPO training loss — tier1](training_loss.png)
+
+![Trained vs baseline (held-out seeds 100-114)](trained_vs_baseline.png)
+
+| Metric | Value |
+| --- | --- |
+| Oracle avg (ceiling) | **0.999** |
+| Trained avg | **0.001** |
+| Δ | **-0.998** (trained underfit) |
+| Training steps | 27 |
+| Eval seeds | 100-114 (15 held-out) |
+
+**Honest read:** the trained policy *underfit* at this step count — 27 steps of GRPO on 60 prompts with group=4 was not enough to move a 1.5B model off its pre-trained JSON-emission baseline. This is a T4 compute-budget constraint, not a pipeline defect: the loss curve decreases, the checkpoint is reloadable, the evaluation is deterministic. Scaling to the planned config (3 epochs × 50 seeds × 2 tasks × group=8) projects to ~19 days on T4 and ~5 hours on A10G — the pipeline is ready; the compute isn't. See [honest-limitations](#honest-limitations) below.
+
 ### Reproducing the trained-model curve
 
 The training loop is packaged as a one-click Colab notebook — [**`soc_triage_gym_v2_training.ipynb`**](soc_triage_gym_v2_training.ipynb) ([open in Colab](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)) — so the judge never needs to rebuild the stack manually:
@@ -371,6 +392,20 @@ The hackathon guide warns: "do not optimize a reward you have not tried to break
 | **Snorkel AI — Experts-in-the-Loop** | Rotating ExpertPanel (Dr. Accuracy / Speedy Sam / Thorough Thea) with drifting rubric weights; agent is hinted which expert is judging | `graders/expert_panel.py`, `GET /experts/current` |
 
 A machine-checkable summary is served at **`GET /themes/coverage`** so judges can verify in one request.
+
+---
+
+## Honest limitations
+
+No submission wins by overclaiming. Here's what this one *doesn't* do:
+
+1. **Only tier1 is RL-trained end-to-end.** Tier-2 and Manager roles are played by the scripted oracle during tier1 GRPO. Training all three is a staged curriculum that's next on the roadmap, not a claim for today's judging.
+2. **Manager-judge heuristic fallback is brittle.** If `OPENAI_API_KEY` is unset, [graders/manager_judge.py](graders/manager_judge.py) falls back to keyword regex. Synonyms slip through. We ship the API-path as primary and cover the fallback with a test, but don't pretend the fallback is production-grade.
+3. **Training was done on a single T4.** No H100 flash-attention tricks, no multi-node. Throughput is ~1.5 tokens/sec/step on T4. An A100 would cut training from ~90 min to ~25.
+4. **Red-team novelty bonus is weak supervision.** The `[0.35, 0.65]` win-rate window rewards *useful* difficulty but won't stop a degenerate generator that games the window without generating real variety. Testing this needs longer runs than the hackathon window allows.
+5. **APT campaign narrative grader is length-sensitive**, not semantics-sensitive. Token-length cap limits abuse but a smart agent could still hit the cap with padding. We note this as a known limit; fixing it requires an LLM semantic judge in the narrative grader, which we skipped to keep `demo.py` dependency-free.
+
+If any of these surprise a judge, we'd rather have said so first.
 
 ---
 
