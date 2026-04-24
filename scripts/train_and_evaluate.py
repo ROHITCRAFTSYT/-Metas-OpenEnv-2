@@ -28,13 +28,22 @@ os.chdir(ROOT)
 
 
 def _check_deps() -> None:
+    # Import order matters: unsloth MUST be imported before trl/peft/transformers
+    # so its monkeypatches apply. Also verify CUDA is reachable before we waste
+    # 90 minutes on a CPU runtime.
     missing = []
-    for mod in ("httpx", "trl", "peft", "datasets", "transformers",
-                "matplotlib", "unsloth", "torch"):
+    for mod in ("torch", "unsloth", "trl", "peft", "datasets",
+                "transformers", "matplotlib", "httpx"):
         try:
             __import__(mod)
         except ImportError:
             missing.append(mod)
+        except Exception as e:  # e.g. unsloth raises NotImplementedError on CPU
+            print(f"[fatal] {mod} failed to import: {e}")
+            if "accelerator" in str(e) or "GPU" in str(e):
+                print("  GPU not attached. Check: !nvidia-smi")
+                print("  If empty, Runtime -> Change runtime type -> T4 GPU, then reconnect.")
+            sys.exit(1)
     if missing:
         print(f"[fatal] missing deps: {missing}")
         print("  run in Colab:")
