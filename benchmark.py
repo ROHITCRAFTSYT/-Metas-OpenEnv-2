@@ -17,7 +17,7 @@ import time
 
 import httpx
 
-TASKS = ["phishing", "lateral_movement", "queue_management", "insider_threat"]
+TASKS = ["phishing", "lateral_movement", "queue_management", "insider_threat", "apt_campaign"]
 DEFAULT_SEEDS = [42, 123, 256, 789, 1024]
 DEFAULT_SERVER = "http://localhost:7860"
 

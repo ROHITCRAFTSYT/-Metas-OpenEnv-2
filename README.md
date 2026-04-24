@@ -18,13 +18,34 @@ tags:
 
 # SOC-Triage-Gym v3
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)
+[![HF Space](https://img.shields.io/badge/🤗%20Space-rohitcraftsyt%2Fopenenv2-yellow)](https://huggingface.co/spaces/rohitcraftsyt/openenv2)
+[![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](tests/)
+
 **OpenEnv Hackathon Apr 2026 — Full-stack theme coverage**
 
 Primary: **Theme #1 Multi-Agent Interactions**
 Sub-theme bonus prizes claimed: **Fleet AI** · **Halluminate** · **Mercor** · **Patronus AI** · **Scaler AI Labs** · **Snorkel AI**
 Also covers: **Theme #2 Long-Horizon Planning** · **Theme #3.1 Professional Tasks** · **Theme #4 Self-Improvement**
 
-The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **9 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox.
+The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **8 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox. Training uses **RLVR** (verifiable programmatic graders) inside an **RLVE** loop (adaptive Red-Team Generator).
+
+> **Judge fast-path:** `python demo.py` — runs the full hackathon §19 walkthrough (baseline → verifier → trained → delta → safeguards) in one command. Machine-checkable theme manifest at `GET /themes/coverage`.
+
+### Why this project wins
+
+| Guide §19 criterion | How this project answers it | Evidence |
+|---|---|---|
+| Clear environment design | OpenEnv-standard `/reset`, `/step`, `/state`; three-role team with ticket bus and phase state machine | [server/environment.py](server/environment.py), [server/app.py](server/app.py) |
+| Objective reward functions | 6+ layered programmatic graders — no LLM-only scoring | [graders/](graders/) |
+| Evidence model improved | Per-step GRPO training script + deterministic multi-seed benchmark | [train_grpo.py](train_grpo.py), [benchmark.py](benchmark.py) |
+| Prevention against reward hacking | 6 named defenses locked in as regression tests | [tests/test_themes_coverage.py](tests/test_themes_coverage.py) |
+| Reproducible deployment | HF Space (Docker SDK, port 7860); `docker run` + Uvicorn both supported | [Dockerfile](Dockerfile), [openenv.yaml](openenv.yaml) |
+| Sharp demo | One-command `demo.py` hitting all 5 §19 beats | [demo.py](demo.py) |
+
+### Breadth — full hackathon theme coverage in one Space
+
+Primary: **Theme #1 Multi-Agent**. Also covers **Theme #2** (250-step APT), **Theme #3.1 Professional**, **Theme #4 Self-Improvement**, plus sub-theme prizes for **Fleet AI · Halluminate · Mercor · Patronus · Scaler AI · Scale AI · Snorkel** — see [Theme Coverage](#theme-coverage) table.
 
 A real Security Operations Center has three tiers: Tier-1 triages alerts and escalates, Tier-2 contains confirmed threats, and a Manager audits the team's decisions. SOC-Triage-Gym v2 models all three roles with a live ticket bus, a phase state machine, and an LLM-based manager judge. The reward signal is a blend of individual role performance and team F1 — so an agent that maximizes personal score at the expense of team outcome is penalized.
 
@@ -62,6 +83,8 @@ Team F1 uses delta (not sticky value) — NOOP-spamming after a correct classifi
 | `team_lateral_team` | team | 8 | 68 | medium |
 | `apt_campaign` | solo | 60+ | **250** | super-hard |
 | `red_team_generated` | team | dynamic | 30–250 | adaptive |
+
+> **Scoring note for `red_team_generated`:** reward here is the *red-team* reward — the inverse of blue-team performance, plus a novelty bonus when blue lands in the trainable sweet spot `[0.35, 0.65]`. A low score means the blue oracle beat the generated scenario; a high score means the generator outsmarted the defender. See [graders/red_team_grader.py](graders/red_team_grader.py).
 
 ---
 
@@ -122,6 +145,11 @@ See [`soc_triage_gym_v2_training.ipynb`](soc_triage_gym_v2_training.ipynb) for t
 
 ```bash
 pip install -e ".[dev]"
+
+# Fastest path — runs server + hits all 5 §19 judge-demo beats in one command:
+python demo.py
+
+# Or start the server and drive it manually:
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
@@ -144,7 +172,76 @@ curl -X POST http://localhost:7860/reset \
 python inference.py
 ```
 
-See [DEMO.md](DEMO.md) for step-by-step judge demo instructions.
+---
+
+## Judge Demo (guide §19 format)
+
+1. **Baseline attempt** — run the scripted oracle on `phishing`:
+   ```bash
+   python inference.py --task phishing --seed 42
+   ```
+2. **Verifier breakdown** — inspect per-component rewards from the grader:
+   ```bash
+   curl -X POST http://localhost:7860/grader \
+     -H "Content-Type: application/json" -d '{"task_id":"phishing"}'
+   ```
+3. **Trained attempt** — load a GRPO-trained checkpoint and run the same seed (see [`soc_triage_gym_v2_training.ipynb`](soc_triage_gym_v2_training.ipynb)).
+4. **Measurable delta** — compare rewards end-to-end:
+   ```bash
+   python benchmark.py --task phishing --seed 42
+   ```
+5. **Safeguards** — view active reward-hacking defenses and theme manifest:
+   ```bash
+   curl http://localhost:7860/themes/coverage | jq
+   ```
+
+### Oracle reward curve
+
+Running `python train_grpo.py --role tier1 --dry-run` produces the per-episode oracle reward curve across all tier-1 tasks and seeds. The trained model's target is to match or beat this line:
+
+![Oracle reward curve — tier1](reward_curve_tier1_oracle.png)
+
+Oracle mean across 20 episodes (phishing, team_phishing_escalation, team_lateral_team) = **0.90**. Use this as the GRPO target when training.
+
+### Baseline gap — random vs oracle
+
+`python train_grpo.py --compare --role tier1` bounds the problem on both sides: a uniform-random policy is the floor an untrained LLM competes against; the scripted oracle is the ceiling a trained LLM should approach. The gap between the two lines is the measurable headroom GRPO has to close — the 20 %-weighted *Showing Improvement in Rewards* criterion lives entirely inside this band.
+
+![Baseline gap — tier1 random vs oracle](reward_comparison_baseline_tier1.png)
+
+| Policy | Mean task score | Notes |
+| --- | --- | --- |
+| Random (untrained floor) | **0.063** | uniform over role-valid action types |
+| Oracle (scripted ceiling) | **0.900** | heuristic defined in `train_grpo.py:oracle_action` |
+| **Learnable gap (Δ)** | **+0.836** | headroom for an RL-trained policy |
+
+Raw per-episode numbers are committed at `reward_comparison_baseline_tier1.csv`.
+
+### Reproducing the trained-model curve
+
+The training loop is packaged as a one-click Colab notebook — [**`soc_triage_gym_v2_training.ipynb`**](soc_triage_gym_v2_training.ipynb) ([open in Colab](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)) — so the judge never needs to rebuild the stack manually:
+
+| Step | Cell | What happens | Wall time on T4 |
+| --- | --- | --- | --- |
+| 1 | *Install* | `unsloth`, `trl`, `peft` + repo clone | ~4 min |
+| 2 | *Server* | Uvicorn on port 7860 | ~5 s |
+| 3-4 | *Verify + baseline* | oracle rollouts, prints avg score | ~30 s |
+| **4b** | ***Random-vs-oracle gap*** | **emits the bracket plot above — artifact for the 20 % criterion, runs without a GPU** | ~1 min |
+| 5-7 | *Load model + dataset + reward fn* | Unsloth 4-bit QLoRA on Qwen2.5-0.5B; per-step dataset | ~3 min |
+| 8 | *GRPO train* | 3 epochs, group=8, per-step reward against the live env | **~70-90 min** |
+| 9 | *Save* | merged-16bit + LoRA to `./soc_grpo_tier1*` and Google Drive | ~1 min |
+| 10-11 | *Eval + plot* | trained-model curve + red-team curriculum oscillation — emits `soc_grpo_results.png`, `redteam_curriculum.png` | ~5 min |
+
+The notebook is designed so **cells 1-7 run on free-tier Colab in ~8 minutes and surface the gap plot without consuming GPU compute** — enough for a judge to verify the pipeline works even if they skip the 70-minute GRPO cell.
+
+### How a judge evaluates this submission
+
+| Guide criterion | Weight | What's committed here | Where to look |
+| --- | --- | --- | --- |
+| Environment Innovation | 40 % | 8 tasks, 3-role team with ticket bus + phase FSM, 250-step APT campaign, rotating expert judges, mid-episode schema drift, adaptive red-team curriculum | [`server/app.py`](server/app.py), [`server/environment.py`](server/environment.py), [`scenarios/red_team_generator.py`](scenarios/red_team_generator.py) |
+| Storytelling | 30 % | This README, dossier-styled landing page, `/ui/themes`, `/ui/metadata`, one-command `demo.py` | [live Space](https://huggingface.co/spaces/rohitcraftsyt/openenv2), [`demo.py`](demo.py) |
+| Showing Improvement | 20 % | Oracle ceiling (0.90) + random floor (0.063) committed; Δ=+0.836 learnable gap; Colab notebook produces the trained line on the same axes | `reward_comparison_baseline_tier1.png`, notebook cell 4b / cell 11 |
+| Reward & pipeline | 10 % | 6 layered programmatic graders, 108 pytest assertions including 6 named reward-hacking regressions, per-step GRPO (not trajectory-averaged) | [`graders/`](graders/), [`tests/`](tests/), [`train_grpo.py`](train_grpo.py) |
 
 ---
 
@@ -222,12 +319,38 @@ soc-triage-gym/
   tests/            108 tests (incl. test_themes_coverage.py regression pack)
   scripts/          gen_plots.py (reward curves), replay.py (deterministic CLI)
   models.py         Pydantic v2 types (incl. ActorMessage, PolicyVersion, RewardBlendConfig, ExpertProfile, TicketSLA)
-  train_grpo.py     Per-step GRPO training script
+  train_grpo.py     Per-step GRPO training script (Unsloth merged-16bit save path)
   inference.py      Scripted oracle baseline
+  benchmark.py      Multi-seed determinism + score benchmark across 5 solo tasks
+  demo.py           One-command judge demo (guide §19 format)
   openenv.yaml      OpenEnv metadata
-  PITCH.md          3-min pitch script
-  DEMO.md           Judge demo walkthrough
 ```
+
+---
+
+## RLVR / RLVE Mapping
+
+| Concept | Where it lives |
+|---|---|
+| **RLVR** — verifiable rewards from programmatic checks | [`graders/`](graders/) — 8 per-task graders + [`graders/token_scaled_reward.py`](graders/token_scaled_reward.py) + [`graders/expert_panel.py`](graders/expert_panel.py) |
+| **RLVE** — adaptive verifiable *environment* (difficulty tracks policy) | [`scenarios/red_team_generator.py`](scenarios/red_team_generator.py) |
+| **Step-level rewards** — dense per-action signal, not only episode outcome | `SOCEnvironment.step()` in [`server/environment.py`](server/environment.py); per-step GRPO in [`train_grpo.py`](train_grpo.py) |
+| **Multi-verifier layering** — outcome + format + anti-cheat + LLM judge | [`graders/manager_judge.py`](graders/manager_judge.py) combined with hard-check graders |
+
+---
+
+## Reward-Hacking Defenses
+
+The hackathon guide warns: "do not optimize a reward you have not tried to break yourself." Regression tests in [`tests/test_themes_coverage.py`](tests/test_themes_coverage.py) lock in adversarial checks:
+
+- **`close_case` idempotency** — duplicate close_case calls cannot inflate reward.
+- **Team F1 delta, not sticky value** — NOOP-spamming after a correct classification yields zero team reward.
+- **Zero-escalation guard** — refusing to ever escalate is penalized.
+- **Over-escalation threshold** — escalating >25% of alerts is penalized.
+- **Manager judge fallback** — when the LLM judge is unavailable, a deterministic rubric prevents reward vacuum.
+- **Policy-drift active-at semantics** — grader honours the policy version that was active at action time, blocking retroactive rule-gaming.
+
+`GET /themes/coverage` exposes these names so judges can verify without running pytest.
 
 ---
 

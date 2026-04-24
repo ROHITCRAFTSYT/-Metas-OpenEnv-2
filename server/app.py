@@ -51,6 +51,13 @@ from models import (
 from scenarios.policy_drift import PolicyDriftEngine
 from scenarios.red_team_generator import RedTeamGenerator
 from server.landing_ui import UI_HTML
+from server.page_ui import (
+    render_metadata as _render_metadata_page,
+    render_tasks as _render_tasks_page,
+    render_themes as _render_themes_page,
+    render_state as _render_state_page,
+    render_schema as _render_schema_page,
+)
 from server.environment import SOCEnvironment
 from tools.ticketing import TicketingSystem
 
@@ -550,6 +557,42 @@ def ui():
 def root():
     """Primary Space landing page."""
     return UI_HTML
+
+
+# ---------------------------------------------------------------------------
+# /ui/* — styled HTML accessors for the JSON-bearing endpoints.
+# API consumers keep hitting the raw routes; these are browser-facing.
+# ---------------------------------------------------------------------------
+
+@app.get("/ui/metadata", response_class=HTMLResponse, include_in_schema=False)
+def ui_metadata():
+    return _render_metadata_page(metadata())
+
+
+@app.get("/ui/tasks", response_class=HTMLResponse, include_in_schema=False)
+def ui_tasks():
+    return _render_tasks_page(TASKS)
+
+
+@app.get("/ui/themes", response_class=HTMLResponse, include_in_schema=False)
+def ui_themes():
+    return _render_themes_page(themes_coverage())
+
+
+@app.get("/ui/state", response_class=HTMLResponse, include_in_schema=False)
+def ui_state():
+    with _env_lock:
+        if _env._config is None:
+            _env.reset(task_id="phishing", seed=42)
+        snap = _env.state()
+    payload = snap.model_dump() if hasattr(snap, "model_dump") else dict(snap)
+    return _render_state_page(payload)
+
+
+@app.get("/ui/schema", response_class=HTMLResponse, include_in_schema=False)
+def ui_schema():
+    return _render_schema_page(schema())
+
 
 # ---------------------------------------------------------------------------
 # REST Tool Endpoints (for LLM agents using direct REST tool calls)
@@ -1057,6 +1100,18 @@ def themes_coverage():
             "snorkel": "/experts/current",
             "scaler_ai": "/tickets",
         },
+        "rlvr_rlve": {
+            "rlvr_verifiers": "graders/",
+            "rlve_adaptive_environment": "scenarios/red_team_generator.py",
+        },
+        "reward_hacking_defenses": [
+            "close_case_idempotency",
+            "team_f1_delta_not_sticky",
+            "zero_escalation_guard",
+            "over_escalation_threshold",
+            "manager_judge_fallback",
+            "policy_drift_active_at_semantics",
+        ],
     }
 
 
