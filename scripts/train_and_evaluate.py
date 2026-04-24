@@ -26,6 +26,30 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+
+def _check_deps() -> None:
+    missing = []
+    for mod in ("httpx", "trl", "peft", "datasets", "transformers",
+                "matplotlib", "unsloth", "torch"):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        print(f"[fatal] missing deps: {missing}")
+        print("  run in Colab:")
+        print('    !pip install -r server/requirements.txt --quiet')
+        print('    !pip install "trl>=0.11" "peft>=0.14" "datasets>=3" '
+              '"accelerate>=0.34" "transformers<5" "bitsandbytes>=0.43" '
+              'matplotlib --quiet')
+        print('    !pip install "unsloth[colab-new] @ '
+              'git+https://github.com/unslothai/unsloth.git" --quiet')
+        print("  then RESTART RUNTIME, cd back in, re-run this script.")
+        sys.exit(1)
+
+
+_check_deps()
+
 SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:7860")
 ROLE = os.environ.get("ROLE", "tier1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-1.5B-Instruct")
