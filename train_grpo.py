@@ -380,23 +380,68 @@ def format_obs_prompt(obs: dict, role: str, step: int) -> str:
 # Reward function (called by GRPOTrainer)
 # ---------------------------------------------------------------------------
 
+def _classify_parse_quality(text: str) -> str:
+    """Tag the model's output by how cleanly it parses as a JSON action.
+
+    Returns one of:
+      "strict"   — entire completion is one valid JSON object with action_type
+      "loose"    — JSON object with action_type recovered via fenced/regex extraction
+      "fallback" — no parseable JSON; we can only infer intent from keywords (or noop)
+
+    Used by the reward function to shape the model toward emitting clean JSON,
+    which is the single most common failure mode for sub-3B models on
+    structured action environments.
+    """
+    import re
+    text = (text or "").strip()
+    # Strict: bare JSON object with action_type
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict) and "action_type" in obj:
+            return "strict"
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Loose: extract via fenced or balanced-brace regex
+    for pattern in (r"```json\s*([\s\S]*?)```", r"```\s*([\s\S]*?)```", r"(\{[\s\S]*\})"):
+        m = re.search(pattern, text)
+        if not m:
+            continue
+        try:
+            obj = json.loads(m.group(1))
+            if isinstance(obj, dict) and "action_type" in obj:
+                return "loose"
+        except json.JSONDecodeError:
+            continue
+    return "fallback"
+
+
+# Shaping bonuses applied on top of the env's per-step reward. Tuned so that
+# strict JSON over a noop-fallback is worth ~0.15 — enough to dominate small
+# noisy env rewards early in training but small enough that a strict-JSON
+# malicious action still loses to a loose-JSON correct action.
+_PARSE_BONUS = {"strict": 0.05, "loose": 0.01, "fallback": -0.10}
+
+
 def make_reward_fn(client: httpx.Client, role: str):
     """
-    Real per-step GRPO reward function.
+    Real per-step GRPO reward function with JSON-validity shaping.
 
     Each training example is one (observation, step_index) pair produced by
     `build_step_dataset`. For each group-sampled completion we:
-      1. Parse the action from the model's text.
-      2. Reset the env to (task_id, seed) and replay oracle actions up to
+      1. Classify the completion's parse quality (strict / loose / fallback).
+      2. Parse the action; if unparseable, fall back to noop.
+      3. Reset the env to (task_id, seed) and replay oracle actions up to
          step_index — reaching the same state the prompt was drawn from.
-      3. Apply the model's action and use the env's immediate step reward.
+      4. Apply the action and use the env's immediate step reward.
+      5. Add a shaping bonus based on parse quality.
 
-    This produces a genuine learning signal: reward reflects the model's
-    decision at that state, not a full-episode rollout dominated by the
-    scripted oracle.
+    The shaping term bootstraps sub-3B models out of the malformed-output
+    trap: without it, a model that emits free-form text gets the env's noop
+    reward (~0) and never receives a gradient signal toward valid JSON.
     """
     def reward_fn(prompts, completions, **kwargs):
         rewards = []
+        quality_counts = {"strict": 0, "loose": 0, "fallback": 0}
         task_ids = kwargs.get("task_id", ["team_phishing_escalation"] * len(completions))
         seeds = kwargs.get("seed", [42] * len(completions))
         step_indices = kwargs.get("step_index", [0] * len(completions))
@@ -407,22 +452,26 @@ def make_reward_fn(client: httpx.Client, role: str):
             seed = seeds[i] if i < len(seeds) else 42
             step_index = step_indices[i] if i < len(step_indices) else 0
 
+            quality = _classify_parse_quality(text)
+            quality_counts[quality] += 1
+            shaping = _PARSE_BONUS[quality]
+
             try:
                 action = parse_action_from_text(text, role)
                 if action is None:
-                    rewards.append(-0.05)
+                    rewards.append(-0.05 + shaping)
                     continue
 
                 obs = replay_to_step(client, task_id, seed, step_index)
                 if obs.get("done", False):
-                    rewards.append(0.0)
+                    rewards.append(0.0 + shaping)
                     continue
 
-                # Guard against role mismatch: the replay may have advanced
-                # past the target role if the oracle completed the phase.
+                # Guard against role mismatch: replay may have advanced past
+                # the target role if the oracle completed the phase.
                 acting_role = obs.get("current_role") or "tier1"
                 if acting_role != role:
-                    rewards.append(-0.02)
+                    rewards.append(-0.02 + shaping)
                     continue
 
                 step_resp = client.post(
@@ -431,12 +480,26 @@ def make_reward_fn(client: httpx.Client, role: str):
                     headers={"Content-Type": "application/json"},
                 )
                 if step_resp.status_code != 200:
-                    rewards.append(-0.05)
+                    rewards.append(-0.05 + shaping)
                     continue
                 stepped = step_resp.json()
-                rewards.append(float(stepped.get("reward", 0.0)))
+                env_reward = float(stepped.get("reward", 0.0))
+                rewards.append(env_reward + shaping)
             except Exception:
-                rewards.append(0.0)
+                rewards.append(0.0 + shaping)
+
+        # Periodic visibility into JSON parse quality — most informative signal
+        # for diagnosing why a small model is or isn't learning. Prints once per
+        # batch (group of completions for the same prompt).
+        total = sum(quality_counts.values()) or 1
+        if total >= 4:  # batch of meaningful size
+            pct = lambda k: 100 * quality_counts[k] / total
+            print(
+                f"[reward_fn] parse: strict {pct('strict'):.0f}% "
+                f"loose {pct('loose'):.0f}% fallback {pct('fallback'):.0f}% "
+                f"| mean reward {sum(rewards)/len(rewards):+.3f}",
+                flush=True,
+            )
         return rewards
 
     return reward_fn

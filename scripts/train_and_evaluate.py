@@ -184,7 +184,10 @@ def evaluate() -> dict:
                 input_ids = input_ids.to(model.device)
                 with torch.no_grad():
                     out = model.generate(
-                        input_ids=input_ids, max_new_tokens=128, do_sample=False,
+                        input_ids=input_ids,
+                        max_new_tokens=96,           # actions are short — less room to drift
+                        do_sample=False,             # greedy: most deterministic eval
+                        repetition_penalty=1.05,     # avoid degenerate loops in small models
                         pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
                     )
                 text = tokenizer.decode(out[0][input_ids.shape[1]:], skip_special_tokens=True)
