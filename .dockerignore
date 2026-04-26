@@ -30,6 +30,7 @@ env/
 # Documentation extras
 *.md
 !README.md
+!blog.md
 
 # Test artifacts
 tests/
