@@ -23,7 +23,7 @@ hf jobs run \
     --secrets HF_TOKEN \
     --env GIT_REF=main \
     pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel \
-    bash -lc 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/scripts/hf_job_entrypoint.sh | bash'
+    bash -c 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/scripts/hf_job_entrypoint.sh | bash'
 ```
 
 **What this does** (≈30 min on `a10g-small`):
@@ -63,7 +63,7 @@ hf jobs run \
     --env SOC_TRAIN_TASKS=team_phishing_escalation \
     --env SOC_TRAIN_N_SEEDS=20 \
     pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel \
-    bash -lc 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/scripts/hf_job_entrypoint.sh | bash'
+    bash -c 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/scripts/hf_job_entrypoint.sh | bash'
 ```
 
 ## Watching progress
@@ -100,6 +100,8 @@ Check `hf jobs ps` for running jobs and `hf jobs logs <job-id>` for past runs.
 ```
 
 **"Job image specification error: Invalid image name `--secret`"** — you used `--secret` (singular). The correct flag is `--secrets` (plural).
+
+**"bash: curl ... | bash: No such file or directory"** — you used `bash -lc` instead of `bash -c`. The `hf jobs` CLI parses `-l` as its `--label` flag (consuming `c` as the label value), so the remote container only ran `bash 'curl ...'` with no `-c` flag. Use `bash -c` and the `-l` flag conflict goes away.
 
 **Job runs but no upload** — your token doesn't have write scope. Regenerate
 at <https://huggingface.co/settings/tokens> with **Write** permission.
