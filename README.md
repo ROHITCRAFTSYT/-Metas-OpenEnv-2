@@ -187,6 +187,16 @@ curl -X POST http://localhost:7860/reset \
 python inference.py
 ```
 
+**Publish a trained adapter to the HuggingFace Hub:**
+```bash
+export HF_TOKEN=hf_xxx       # write scope
+python scripts/hf_publish.py --adapter ./soc_grpo_tier1 --repo USER/soc-triage-tier1
+# also sync the Space:
+python scripts/hf_publish.py --space
+```
+
+The script autogenerates a model card from `training_summary.json` (training config, results, env links). See [scripts/hf_publish.py](scripts/hf_publish.py) for options.
+
 ---
 
 ## Judge Demo (guide §19 format)
