@@ -59,7 +59,7 @@ from tools.ticketing import TicketingSystem
 # App state
 # ---------------------------------------------------------------------------
 
-_env: Optional[SOCEnvironment] = None
+_env: SOCEnvironment = SOCEnvironment()
 _env_lock = threading.Lock()
 _baseline_agent = HeuristicBaselineAgent()
 

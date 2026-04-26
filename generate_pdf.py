@@ -252,7 +252,7 @@ def build_pdf(output_path):
         ["Determinism", "Seed-based scenario generation ensures 100% reproducible results"],
         ["Deployment", "Docker container on Hugging Face Spaces with interactive web UI"],
         ["Baseline", "Heuristic rule-based agent averages ~79% across all scenarios"],
-        ["Tests", "31/31 pytest tests pass covering all components"],
+        ["Tests", "108/108 pytest tests pass plus 1 skipped optional check"],
     ]
     story.append(metric_table(facts_data, [CW*0.22, CW*0.78]))
     story.append(PageBreak())
@@ -609,7 +609,7 @@ def build_pdf(output_path):
         ["LLM Framework", "OpenAI SDK", "Compatible with any OpenAI-API-compatible endpoint"],
         ["MCP", "FastMCP >= 3.2.0", "Model Context Protocol for AI tool calling"],
         ["Containerization", "Docker", "Reproducible deployment on Hugging Face Spaces"],
-        ["Testing", "Pytest + pytest-asyncio", "31 tests covering all components"],
+        ["Testing", "Pytest", "108 tests covering environment, server, team mode, graders, and theme coverage"],
         ["Security Intel", "MITRE ATT&CK", "Built-in technique validation database"],
         ["Package Manager", "uv", "Fast dependency resolution and lockfile"],
     ]
@@ -634,7 +634,7 @@ def build_pdf(output_path):
         '# Clone and install<br/>'
         'git clone https://github.com/ROHITCRAFTSYT/-Metas-OpenEnv-2.git<br/>'
         'cd -Metas-OpenEnv-2<br/>'
-        'pip install -e .<br/><br/>'
+        'python3 -m pip install -e .<br/><br/>'
         '# Start the server<br/>'
         'uvicorn server.app:app --host 0.0.0.0 --port 7860<br/><br/>'
         '# Run the baseline agent<br/>'
@@ -645,7 +645,7 @@ def build_pdf(output_path):
         'python benchmark.py<br/><br/>'
         '# Run an LLM agent<br/>'
         'export OPENAI_API_KEY=sk-...<br/>'
-        'python inference.py'
+        'python3 inference.py'
         '</font>',
         S["body"]))
 
@@ -681,7 +681,7 @@ def build_pdf(output_path):
         ("<b>Multi-Interface:</b> REST API + MCP JSON-RPC + Python client + interactive web UI. "
          "Works with any LLM, any RL framework, or direct human interaction.",),
         ("<b>Production-Ready:</b> Docker deployment, health checks, thread-safe environment, "
-         "31/31 tests passing, security policy, Hugging Face Space hosting.",),
+         "108 tests passing, security policy, Hugging Face Space hosting.",),
         ("<b>OpenEnv Compliant:</b> Passes all openenv-core validation checks. Drop-in compatible with the "
          "OpenEnv ecosystem for standardized agent evaluation.",),
         ("<b>Strong but Beatable Baseline:</b> The 79% heuristic baseline proves the task is non-trivial "
@@ -749,7 +749,7 @@ def build_pdf(output_path):
         ["30 alerts", "Maximum queue size (Insider Threat scenario)"],
         ["53% FP rate", "Highest false positive rate (Insider Threat)"],
         ["79% baseline", "Average heuristic agent score across all tasks"],
-        ["31/31 tests", "Full test coverage passing"],
+        ["108 tests", "Full test coverage passing"],
         ["100% deterministic", "Same seed = identical results, always"],
         ["~4,500 lines", "Core codebase size (not counting tests or UI)"],
     ]

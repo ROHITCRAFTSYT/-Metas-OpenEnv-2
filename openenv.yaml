@@ -4,8 +4,9 @@ description: >
   A reinforcement learning environment simulating a Security Operations Center (SOC) analyst.
   An AI agent receives SIEM alerts and must enrich threat indicators, query log sources,
   correlate events across alerts, classify alerts as TP/FP/BTP, map findings to MITRE ATT&CK,
-  and recommend containment actions. Round 2 adds team-mode episodes with Tier-1, Tier-2,
-  SOC Manager oversight, inter-agent tickets, and adaptive red-team generated scenarios.
+  and recommend containment actions. The environment adds team-mode episodes with Tier-1,
+  Tier-2, SOC Manager oversight, inter-agent tickets, adaptive red-team generated
+  scenarios, and a 250-step APT campaign.
 
 author: rohitcraftsyt
 
@@ -19,6 +20,8 @@ tags:
   - multi-agent
   - oversight
   - self-improvement
+  - long-horizon
+  - professional-tasks
 
 observation_space:
   type: dict
@@ -96,6 +99,16 @@ tasks:
     max_steps: 68
     reward_range: [0.0, 1.0]
 
+  - id: apt_campaign
+    name: "APT Campaign (Super Long-Horizon)"
+    description: >
+      Investigate a 250-step composite APT campaign with 60+ alerts across
+      initial access, persistence, lateral movement, exfiltration, and cleanup.
+      Includes sparse delayed reward, policy drift, and rotating expert judging.
+    difficulty: super-hard
+    max_steps: 250
+    reward_range: [0.0, 1.0]
+
   - id: red_team_generated
     name: "Generated Adversarial Scenario"
     description: >
@@ -121,3 +134,12 @@ endpoints:
   baseline: POST /baseline
   generate_scenario: POST /generate_scenario
   inbox: GET /inbox/{role}
+  actors_messages: GET /actors/messages
+  policy_current: GET /policy/current
+  policy_history: GET /policy/history
+  reward_config: GET /reward/config
+  reward_token_bonus: POST /reward/token_bonus
+  experts_current: GET /experts/current
+  experts_rotate: POST /experts/rotate
+  tickets: GET /tickets
+  themes_coverage: GET /themes/coverage

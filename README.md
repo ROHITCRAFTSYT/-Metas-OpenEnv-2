@@ -24,9 +24,9 @@ Primary: **Theme #1 Multi-Agent Interactions**
 Sub-theme bonus prizes claimed: **Fleet AI** · **Halluminate** · **Mercor** · **Patronus AI** · **Scaler AI Labs** · **Snorkel AI**
 Also covers: **Theme #2 Long-Horizon Planning** · **Theme #3.1 Professional Tasks** · **Theme #4 Self-Improvement**
 
-The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **9 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox.
+The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **8 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox.
 
-A real Security Operations Center has three tiers: Tier-1 triages alerts and escalates, Tier-2 contains confirmed threats, and a Manager audits the team's decisions. SOC-Triage-Gym v2 models all three roles with a live ticket bus, a phase state machine, and an LLM-based manager judge. The reward signal is a blend of individual role performance and team F1 — so an agent that maximizes personal score at the expense of team outcome is penalized.
+A real Security Operations Center has three tiers: Tier-1 triages alerts and escalates, Tier-2 contains confirmed threats, and a Manager audits the team's decisions. SOC-Triage-Gym v3 models all three roles with a live ticket bus, a phase state machine, and an LLM-based manager judge. The reward signal is a blend of individual role performance and team F1 — so an agent that maximizes personal score at the expense of team outcome is penalized.
 
 ---
 
@@ -108,10 +108,10 @@ The reward function replays the environment to `step_index` deterministically (s
 
 ```bash
 # Colab/GPU training
-python train_grpo.py --role tier1 --model Qwen/Qwen2.5-0.5B --unsloth
+python3 train_grpo.py --role tier1 --model Qwen/Qwen2.5-0.5B --unsloth
 
 # Dry-run (oracle baseline, no GPU)
-python train_grpo.py --role tier1 --dry-run
+python3 train_grpo.py --role tier1 --dry-run
 ```
 
 See [`soc_triage_gym_v2_training.ipynb`](soc_triage_gym_v2_training.ipynb) for the full Colab walkthrough.
@@ -121,7 +121,7 @@ See [`soc_triage_gym_v2_training.ipynb`](soc_triage_gym_v2_training.ipynb) for t
 ## Quick Start
 
 ```bash
-pip install -e ".[dev]"
+python3 -m pip install -e ".[dev]"
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
 
@@ -141,7 +141,7 @@ curl -X POST http://localhost:7860/reset \
 
 **Scripted oracle baseline:**
 ```bash
-python inference.py
+python3 inference.py
 ```
 
 See [DEMO.md](DEMO.md) for step-by-step judge demo instructions.
@@ -153,7 +153,7 @@ See [DEMO.md](DEMO.md) for step-by-step judge demo instructions.
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/health` | GET | Liveness check |
-| `/tasks` | GET | All 7 tasks |
+| `/tasks` | GET | All 8 tasks |
 | `/reset` | POST | Start episode |
 | `/step` | POST | Submit action |
 | `/state` | GET | Current state |
