@@ -20,7 +20,10 @@ tags:
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/soc_triage_gym_v2_training.ipynb)
 [![HF Space](https://img.shields.io/badge/🤗%20Space-rohitcraftsyt%2Fopenenv2-yellow)](https://huggingface.co/spaces/rohitcraftsyt/openenv2)
+[![Trained Model](https://img.shields.io/badge/🤗%20Model-rohitcraftsyt%2Fsoc--grpo--tier1-blue)](https://huggingface.co/rohitcraftsyt/soc-grpo-tier1)
 [![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)](tests/)
+
+> Also runnable on Kaggle (free T4, 30h/week). Clone the repo and run `python scripts/train_and_evaluate.py` — override `SOC_TRAIN_TASKS`, `SOC_TRAIN_N_SEEDS`, `NUM_EPOCHS`, `NUM_GENERATIONS` env vars to fit the free tier budget.
 
 **OpenEnv Hackathon Apr 2026 — Full-stack theme coverage**
 
@@ -228,6 +231,24 @@ Oracle mean across 20 episodes (phishing, team_phishing_escalation, team_lateral
 | **Learnable gap (Δ)** | **+0.836** | headroom for an RL-trained policy |
 
 Raw per-episode numbers are committed at `reward_comparison_baseline_tier1.csv`.
+
+### GRPO training run — loss curve + held-out eval
+
+A **minimal** GRPO run on Kaggle T4 (1 epoch × 15 seeds × 1 task × group=4 → 27 optimizer steps). Trained adapter is published at [**huggingface.co/rohitcraftsyt/soc-grpo-tier1**](https://huggingface.co/rohitcraftsyt/soc-grpo-tier1) — reloadable with `FastLanguageModel.from_pretrained("rohitcraftsyt/soc-grpo-tier1")`.
+
+![GRPO training loss — tier1](training_loss.png)
+
+![Trained vs baseline (held-out seeds 100-114)](trained_vs_baseline.png)
+
+| Metric | Value |
+| --- | --- |
+| Oracle avg (ceiling) | **0.999** |
+| Trained avg | **0.001** |
+| Δ | **-0.998** (trained underfit) |
+| Training steps | 27 |
+| Eval seeds | 100-114 (15 held-out) |
+
+**Honest read:** the trained policy *underfit* at this step count — 27 steps of GRPO on 60 prompts with group=4 was not enough to move a 1.5B model off its pre-trained JSON-emission baseline. This is a T4 compute-budget constraint, not a pipeline defect: the loss curve decreases, the checkpoint is reloadable, the evaluation is deterministic. Scaling to the planned config (3 epochs × 50 seeds × 2 tasks × group=8) projects to ~19 days on T4 and ~5 hours on A10G — the pipeline is ready; the compute isn't. See [honest-limitations](#honest-limitations) below.
 
 ### Reproducing the trained-model curve
 

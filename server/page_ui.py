@@ -443,29 +443,42 @@ def render_themes(data: dict) -> HTMLResponse:
 
 
 def render_state(data: dict) -> HTMLResponse:
-    """Render /state as a snapshot dashboard."""
-    step = data.get("step", "—")
-    done = data.get("done", False)
-    reward = data.get("reward", 0.0)
-    cum = data.get("cumulative_reward", 0.0)
-    task = data.get("task_id", "—")
-    investigations = data.get("investigations", {}) or {}
-    alerts = data.get("alert_queue", []) or []
+    """Render /state as a snapshot dashboard.
 
-    status_chip = (
-        '<span class="chip red">· episode done</span>'
-        if done
-        else '<span class="chip green">· live</span>'
-    )
+    `data` is an EnvironmentState dump — it carries scalar counts
+    (alert_count, classified_count, step_count, max_steps,
+    cumulative_reward), not the nested alert_queue/investigations
+    arrays. Reading the wrong keys produces a page of zeros even
+    when an episode is live.
+    """
+    has_episode = bool(data.get("episode_id") and data.get("task_id"))
+    step = data.get("step_count", 0) or 0
+    max_steps = data.get("max_steps", 0) or 0
+    done = data.get("done", False)
+    cum = data.get("cumulative_reward", 0.0) or 0.0
+    task = data.get("task_id") or "—"
+    alert_count = data.get("alert_count", 0) or 0
+    classified = data.get("classified_count", 0) or 0
+    mode = data.get("episode_mode") or "tier1_solo"
+
+    if not has_episode:
+        status_chip = '<span class="chip">· idle</span>'
+    elif done:
+        status_chip = '<span class="chip red">· episode done</span>'
+    else:
+        status_chip = '<span class="chip green">· live</span>'
+
+    step_label = f"{step} / {max_steps}" if max_steps else (str(step) if has_episode else "—")
+    classified_label = f"{classified} / {alert_count}" if has_episode else "—"
 
     inner = f"""
 <div class="grid-2">
   <div class="card"><div class="k">Task</div><div class="v"><em>{html.escape(str(task))}</em></div><div class="d">{status_chip}</div></div>
-  <div class="card"><div class="k">Step</div><div class="v">{step}</div><div class="d">of the current episode</div></div>
-  <div class="card"><div class="k">Step Reward</div><div class="v">{reward:.3f}</div><div class="d">contribution from the last action</div></div>
-  <div class="card"><div class="k">Cumulative</div><div class="v">{cum:.3f}</div><div class="d">episode-to-date total</div></div>
-  <div class="card"><div class="k">Alerts</div><div class="v">{len(alerts)}</div><div class="d">in the queue</div></div>
-  <div class="card"><div class="k">Investigations</div><div class="v">{len(investigations)}</div><div class="d">opened so far</div></div>
+  <div class="card"><div class="k">Step</div><div class="v">{html.escape(step_label)}</div><div class="d">of the current episode</div></div>
+  <div class="card"><div class="k">Cumulative Reward</div><div class="v">{cum:+.3f}</div><div class="d">episode-to-date total</div></div>
+  <div class="card"><div class="k">Mode</div><div class="v">{html.escape(str(mode))}</div><div class="d">solo or team</div></div>
+  <div class="card"><div class="k">Alerts</div><div class="v">{alert_count}</div><div class="d">in the queue</div></div>
+  <div class="card"><div class="k">Classified</div><div class="v">{html.escape(classified_label)}</div><div class="d">investigations resolved</div></div>
 </div>
 
 {_raw_block(data)}

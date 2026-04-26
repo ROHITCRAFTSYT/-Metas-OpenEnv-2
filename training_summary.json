@@ -1,0 +1,8 @@
+{
+  "role": "tier1",
+  "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
+  "oracle_avg": 0.999,
+  "trained_avg": 0.001,
+  "delta": -0.998,
+  "n_episodes": 15
+}
