@@ -775,6 +775,168 @@ footer .sigline{
 }
 footer .sigline b{color:var(--ink);font-weight:600}
 
+/* ─── dossier modal (blog.md) ────────────────────────────────────────── */
+.dossier-trigger{
+  position:fixed; top:14px; right:18px; z-index:9000;
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 14px 8px;
+  background:var(--paper-2);
+  border:1px solid var(--ink);
+  color:var(--ink);
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:10.5px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  font-weight:600;
+  cursor:pointer;
+  transition:transform .15s ease,box-shadow .15s ease,background .15s ease;
+  box-shadow:2px 2px 0 var(--ink);
+}
+.dossier-trigger:hover{
+  background:var(--stamp);
+  color:var(--paper);
+  transform:translate(-1px,-1px);
+  box-shadow:3px 3px 0 var(--ink);
+}
+.dossier-trigger::before{
+  content:"";display:inline-block;width:6px;height:6px;
+  background:var(--stamp);
+  border:1px solid var(--ink);
+}
+.dossier-trigger:hover::before{background:var(--paper)}
+.dossier-overlay{
+  position:fixed;inset:0;z-index:8500;
+  background:rgba(20,16,8,.55);
+  backdrop-filter:blur(2px);
+  display:none;
+  align-items:flex-start;justify-content:center;
+  padding:48px 24px;
+  overflow-y:auto;
+}
+.dossier-overlay.open{display:flex;animation:fadein .25s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.dossier-modal{
+  position:relative;
+  width:100%;max-width:880px;
+  background:var(--paper);
+  border:1px solid var(--ink);
+  box-shadow:8px 8px 0 var(--ink),0 30px 80px rgba(0,0,0,.35);
+  padding:0;
+  font-family:"Fraunces",Georgia,serif;
+  animation:rise .35s cubic-bezier(.2,.7,.2,1) both;
+}
+.dossier-modal::before{
+  content:"";
+  position:absolute;inset:0;
+  pointer-events:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='5'/><feColorMatrix values='0 0 0 0 0.08  0 0 0 0 0.06  0 0 0 0 0.04  0 0 0 0.07 0'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>");
+  opacity:.5;
+  mix-blend-mode:multiply;
+}
+.dossier-modal-head{
+  position:relative;z-index:1;
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:18px 26px 14px;
+  border-bottom:1px solid var(--ink);
+  background:var(--paper-2);
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:10.5px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--ink-soft);
+}
+.dossier-modal-head .file-no{color:var(--stamp);font-weight:700}
+.dossier-modal-close{
+  background:none;border:none;cursor:pointer;
+  font-family:"Instrument Serif",serif;
+  font-size:28px;line-height:1;color:var(--ink);
+  padding:0 4px;letter-spacing:0;
+}
+.dossier-modal-close:hover{color:var(--stamp)}
+.dossier-modal-body{
+  position:relative;z-index:1;
+  padding:36px 56px 48px;
+  max-height:calc(100vh - 190px);
+  overflow-y:auto;
+  color:var(--ink);
+}
+.dossier-modal-body h1{
+  font-family:"Instrument Serif",serif;
+  font-weight:400;font-size:42px;line-height:1.05;
+  margin-bottom:.4em;letter-spacing:-.02em;
+}
+.dossier-modal-body h1+p em{color:var(--stamp);font-style:italic}
+.dossier-modal-body h2{
+  font-family:"Instrument Serif",serif;
+  font-weight:400;font-size:26px;line-height:1.2;
+  margin:1.4em 0 .5em;
+  padding-top:.6em;border-top:.5px solid var(--hairline);
+  letter-spacing:-.01em;
+}
+.dossier-modal-body h3{
+  font-family:"Fraunces",Georgia,serif;
+  font-variation-settings:"opsz" 18,"wght" 600;
+  font-size:16px;margin:1.4em 0 .3em;
+  text-transform:uppercase;letter-spacing:.06em;
+  color:var(--ink-soft);
+}
+.dossier-modal-body p{margin:0 0 .9em}
+.dossier-modal-body a{color:var(--cobalt);text-decoration:underline;text-decoration-thickness:.5px;text-underline-offset:3px}
+.dossier-modal-body a:hover{color:var(--stamp)}
+.dossier-modal-body code{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:13px;background:var(--paper-2);
+  padding:1px 6px;border:.5px solid var(--hairline);
+}
+.dossier-modal-body pre{
+  background:var(--term-bg);color:var(--term-ink);
+  padding:14px 18px;margin:1em 0;
+  border:1px solid var(--ink);
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:12.5px;line-height:1.5;
+  overflow-x:auto;
+}
+.dossier-modal-body pre code{background:none;border:none;color:inherit;padding:0}
+.dossier-modal-body table{
+  width:100%;border-collapse:collapse;margin:1em 0;
+  font-size:14px;
+}
+.dossier-modal-body th,.dossier-modal-body td{
+  padding:8px 12px;text-align:left;
+  border-bottom:.5px solid var(--hairline);
+}
+.dossier-modal-body th{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-soft);font-weight:600;
+  border-bottom:1px solid var(--ink);
+}
+.dossier-modal-body img{
+  max-width:100%;height:auto;
+  border:1px solid var(--ink);margin:1em 0;
+  background:var(--paper-2);
+}
+.dossier-modal-body ul,.dossier-modal-body ol{margin:.5em 0 1em 1.4em}
+.dossier-modal-body li{margin:.2em 0}
+.dossier-modal-body blockquote{
+  border-left:3px solid var(--stamp);
+  padding:4px 0 4px 16px;margin:1em 0;
+  color:var(--ink-soft);font-style:italic;
+}
+.dossier-modal-body hr{border:none;border-top:.5px dashed var(--hairline);margin:1.6em 0}
+.dossier-modal-loading{
+  text-align:center;color:var(--muted);padding:60px 0;
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+}
+
+@media (max-width:980px){
+  .dossier-trigger{top:auto;bottom:14px;right:14px}
+  .dossier-modal-body{padding:24px 26px 32px}
+  .dossier-modal-body h1{font-size:32px}
+  .dossier-overlay{padding:24px 12px}
+}
+
 /* ─── load animation ─────────────────────────────────────────────────── */
 .reveal{opacity:0;transform:translateY(14px);animation:rise .9s cubic-bezier(.2,.7,.2,1) forwards}
 @keyframes rise{to{opacity:1;transform:translateY(0)}}
@@ -807,6 +969,11 @@ footer .sigline b{color:var(--ink);font-weight:600}
 </style>
 </head>
 <body>
+
+<!-- ─── DOSSIER MODAL TRIGGER ─────────────────────────────────────────── -->
+<button class="dossier-trigger" id="dossier-open" aria-label="Open the project dossier">
+  Read · The · Dossier
+</button>
 
 <!-- ─── BROADCAST / ADVISORY ──────────────────────────────────────────── -->
 <div class="advisory">
@@ -1223,6 +1390,20 @@ footer .sigline b{color:var(--ink);font-weight:600}
 
 </div><!-- /page -->
 
+<!-- ─── DOSSIER MODAL ─────────────────────────────────────────────────── -->
+<div class="dossier-overlay" id="dossier-overlay" role="dialog" aria-modal="true" aria-labelledby="dossier-title">
+  <article class="dossier-modal">
+    <header class="dossier-modal-head">
+      <span><span class="file-no">FILE 003 · APPENDIX A</span> &nbsp;&nbsp;·&nbsp;&nbsp; Project Narrative · blog.md</span>
+      <button class="dossier-modal-close" id="dossier-close" aria-label="Close">×</button>
+    </header>
+    <div class="dossier-modal-body" id="dossier-body">
+      <div class="dossier-modal-loading">▒░ Loading dossier ░▒</div>
+    </div>
+  </article>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 /* subtle parallax on the stamp based on mouse position — restrained */
 (function(){
@@ -1234,6 +1415,54 @@ footer .sigline b{color:var(--ink);font-weight:600}
     var y=(e.clientY/window.innerHeight-.5)*2;
     stamp.style.transform='rotate('+(base+x*1.5)+'deg) translate('+(x*2)+'px,'+(y*-2)+'px)';
   },{passive:true});
+})();
+
+/* dossier modal — fetch blog.md once, render with marked.js, open/close */
+(function(){
+  var overlay = document.getElementById('dossier-overlay');
+  var openBtn = document.getElementById('dossier-open');
+  var closeBtn = document.getElementById('dossier-close');
+  var body    = document.getElementById('dossier-body');
+  var loaded  = false;
+
+  function renderMarkdown(md){
+    if(typeof marked === 'undefined'){
+      body.innerHTML = '<p><em>marked.js failed to load. View raw at <a href="/blog.md">/blog.md</a>.</em></p>';
+      return;
+    }
+    /* Rewrite relative image and link paths to /-rooted absolute so they
+       resolve regardless of the current page route. */
+    var html = marked.parse(md);
+    html = html.replace(/src="(?!https?:|\/)/g, 'src="https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/');
+    body.innerHTML = html;
+  }
+
+  function loadOnce(){
+    if(loaded) return;
+    fetch('/blog.md', {cache: 'no-cache'})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+      .then(function(md){ renderMarkdown(md); loaded = true; })
+      .catch(function(e){
+        body.innerHTML = '<p><em>Could not load blog.md: '+e.message+'. <a href="https://github.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/blob/main/blog.md">Read on GitHub →</a></em></p>';
+      });
+  }
+
+  function open(){
+    loadOnce();
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function close(){
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) close(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && overlay.classList.contains('open')) close();
+  });
 })();
 </script>
 

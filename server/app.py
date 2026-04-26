@@ -26,7 +26,7 @@ from typing import List, Literal, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -557,6 +557,16 @@ def ui():
 def root():
     """Primary Space landing page."""
     return UI_HTML
+
+
+@app.get("/blog.md", response_class=PlainTextResponse, include_in_schema=False)
+def blog_md():
+    """Raw blog.md so the landing-page modal can render it client-side via marked.js."""
+    from pathlib import Path
+    p = Path(__file__).resolve().parent.parent / "blog.md"
+    if not p.exists():
+        return PlainTextResponse("# blog.md not found\n", status_code=404)
+    return PlainTextResponse(p.read_text(encoding="utf-8"), media_type="text/markdown; charset=utf-8")
 
 
 # ---------------------------------------------------------------------------
