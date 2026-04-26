@@ -62,6 +62,9 @@ _check_deps()
 SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:7860")
 ROLE = os.environ.get("ROLE", "tier1")
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-1.5B-Instruct")
+NUM_EPOCHS = int(os.environ.get("NUM_EPOCHS", "3"))
+NUM_GENERATIONS = int(os.environ.get("NUM_GENERATIONS", "8"))
+LEARNING_RATE = float(os.environ.get("LEARNING_RATE", "1e-5"))   # was 5e-6 default — too low for this env
 CKPT_DIR = ROOT / "checkpoints" / f"soc_grpo_{ROLE}"
 EVAL_SEEDS = list(range(100, 115))  # held-out, not in training
 
@@ -102,10 +105,13 @@ def train_policy() -> None:
     from train_grpo import train as grpo_train
 
     print(f"\n[train] GRPO on role={ROLE} model={MODEL_NAME}")
+    print(f"        epochs={NUM_EPOCHS} group={NUM_GENERATIONS} lr={LEARNING_RATE}")
     grpo_train(
         role=ROLE,
         model_name=MODEL_NAME,
-        num_train_epochs=3,
+        num_train_epochs=NUM_EPOCHS,
+        num_generations=NUM_GENERATIONS,
+        learning_rate=LEARNING_RATE,
         output_dir=str(CKPT_DIR),
         use_unsloth=True,
     )
