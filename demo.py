@@ -127,17 +127,27 @@ def main():
                 print(f"  notes   = {grader.get('message', grader.get('notes', '—'))}")
 
             # ---- Beat 3: Trained attempt ----
-            # We don't ship a GPU checkpoint; re-run the oracle with
-            # different seed-perturbation to simulate a trained policy
-            # that has already internalized the structure. This is a
-            # placeholder — swap in `python train_grpo.py ...` output.
-            _banner("3/5 · Trained attempt (scripted oracle proxy)", "③")
-            trained = _run_baseline(c, args.task, args.seed)
-            score_trained = trained.get("score", 0.0)
-            steps_trained = trained.get("steps_used", "?")
-            print(f"  score = {score_trained*100:.1f}%   steps = {steps_trained}")
-            print(f"  (oracle stands in for GRPO checkpoint — load a real ckpt via")
-            print(f"   soc_triage_gym_v2_training.ipynb to replace this beat)")
+            # If a real GRPO eval summary exists (training_summary.json produced
+            # by scripts/train_and_evaluate.py), use those metrics. Otherwise
+            # fall back to the oracle proxy so the demo still runs end-to-end.
+            import json as _json, os as _os
+            _summary_path = _os.path.join(_os.path.dirname(__file__), "training_summary.json")
+            if _os.path.exists(_summary_path):
+                _s = _json.loads(open(_summary_path).read())
+                _banner("3/5 · Trained attempt (GRPO checkpoint, held-out seeds)", "③")
+                score_trained = float(_s.get("trained_avg", 0.0))
+                steps_trained = f"{_s.get('n_episodes','?')} eps"
+                print(f"  score = {score_trained*100:.1f}%   episodes = {steps_trained}")
+                print(f"  (loaded from training_summary.json · role={_s.get('role')}"
+                      f" · model={_s.get('model_name')})")
+            else:
+                _banner("3/5 · Trained attempt (scripted oracle proxy)", "③")
+                trained = _run_baseline(c, args.task, args.seed)
+                score_trained = trained.get("score", 0.0)
+                steps_trained = trained.get("steps_used", "?")
+                print(f"  score = {score_trained*100:.1f}%   steps = {steps_trained}")
+                print(f"  (oracle proxy · run scripts/train_and_evaluate.py to"
+                      f" produce training_summary.json and replace this beat)")
 
             # ---- Beat 4: Measurable delta ----
             _banner("4/5 · Measurable delta", "④")

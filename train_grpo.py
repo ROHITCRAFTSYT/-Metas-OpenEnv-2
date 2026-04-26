@@ -500,7 +500,8 @@ def train(
     print(f"{'='*60}\n")
 
     # ---- Connect to environment server ----
-    client = httpx.Client(base_url=SERVER_URL, timeout=30.0)
+    # 180s so long team_lateral_team rollouts (68 steps) don't trip during dataset build.
+    client = httpx.Client(base_url=SERVER_URL, timeout=180.0)
     try:
         health = client.get("/health")
         health.raise_for_status()

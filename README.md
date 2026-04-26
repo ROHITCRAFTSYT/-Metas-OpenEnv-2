@@ -30,7 +30,7 @@ Also covers: **Theme #2 Long-Horizon Planning** · **Theme #3.1 Professional Tas
 
 The first OpenEnv environment that trains and evaluates AI agents as a coordinated SOC team — not a single analyst — across **8 tasks** spanning single-alert triage up to a **250-step APT campaign**, with mid-episode schema drift, rotating expert judges, token-length-scaled rewards, and three external NPC actors feeding into the inbox. Training uses **RLVR** (verifiable programmatic graders) inside an **RLVE** loop (adaptive Red-Team Generator).
 
-> **Judge fast-path:** `python demo.py` — runs the full hackathon §19 walkthrough (baseline → verifier → trained → delta → safeguards) in one command. Machine-checkable theme manifest at `GET /themes/coverage`.
+> **Judge fast-path:** `bash scripts/quickstart.sh` — installs deps, starts the env, prints the theme-coverage manifest, and runs the 5-beat walkthrough. ~60 seconds. A shorter "why should I care" read is in [JUDGES_START_HERE.md](JUDGES_START_HERE.md).
 
 ### Why this project wins
 
@@ -371,6 +371,20 @@ The hackathon guide warns: "do not optimize a reward you have not tried to break
 | **Snorkel AI — Experts-in-the-Loop** | Rotating ExpertPanel (Dr. Accuracy / Speedy Sam / Thorough Thea) with drifting rubric weights; agent is hinted which expert is judging | `graders/expert_panel.py`, `GET /experts/current` |
 
 A machine-checkable summary is served at **`GET /themes/coverage`** so judges can verify in one request.
+
+---
+
+## Honest limitations
+
+No submission wins by overclaiming. Here's what this one *doesn't* do:
+
+1. **Only tier1 is RL-trained end-to-end.** Tier-2 and Manager roles are played by the scripted oracle during tier1 GRPO. Training all three is a staged curriculum that's next on the roadmap, not a claim for today's judging.
+2. **Manager-judge heuristic fallback is brittle.** If `OPENAI_API_KEY` is unset, [graders/manager_judge.py](graders/manager_judge.py) falls back to keyword regex. Synonyms slip through. We ship the API-path as primary and cover the fallback with a test, but don't pretend the fallback is production-grade.
+3. **Training was done on a single T4.** No H100 flash-attention tricks, no multi-node. Throughput is ~1.5 tokens/sec/step on T4. An A100 would cut training from ~90 min to ~25.
+4. **Red-team novelty bonus is weak supervision.** The `[0.35, 0.65]` win-rate window rewards *useful* difficulty but won't stop a degenerate generator that games the window without generating real variety. Testing this needs longer runs than the hackathon window allows.
+5. **APT campaign narrative grader is length-sensitive**, not semantics-sensitive. Token-length cap limits abuse but a smart agent could still hit the cap with padding. We note this as a known limit; fixing it requires an LLM semantic judge in the narrative grader, which we skipped to keep `demo.py` dependency-free.
+
+If any of these surprise a judge, we'd rather have said so first.
 
 ---
 
