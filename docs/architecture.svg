@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" font-family="Inter, system-ui, -apple-system, sans-serif">
+  <defs>
+    <style>
+      .role  { fill: #1F2A44; stroke: #4C72B0; stroke-width: 2; rx: 10; }
+      .actor { fill: #2A1F2D; stroke: #8E5572; stroke-width: 2; rx: 10; }
+      .infra { fill: #1A2A22; stroke: #55A868; stroke-width: 2; rx: 10; }
+      .red   { fill: #2D1A1A; stroke: #C44E52; stroke-width: 2; rx: 10; }
+      .judge { fill: #2D2719; stroke: #DD8452; stroke-width: 2; rx: 10; }
+      .title { fill: #FFFFFF; font-weight: 700; font-size: 16px; }
+      .sub   { fill: #C7CDD9; font-size: 11px; }
+      .lbl   { fill: #FFFFFF; font-size: 12px; font-weight: 600; }
+      .edge  { stroke: #6A7280; stroke-width: 1.6; fill: none; }
+      .edge-r { stroke: #C44E52; stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+      .edge-j { stroke: #DD8452; stroke-width: 1.6; fill: none; stroke-dasharray: 4 3; }
+      .phase { fill: #94A3B8; font-size: 11px; font-style: italic; }
+      .head  { fill: #FFFFFF; font-weight: 800; font-size: 22px; }
+      .badge { fill: #4C72B0; }
+      .reward { fill: #FFEAA0; font-size: 11px; font-weight: 600; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6A7280"/>
+    </marker>
+    <marker id="arrow-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#C44E52"/>
+    </marker>
+    <marker id="arrow-j" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#DD8452"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="720" fill="#0F172A"/>
+
+  <text x="600" y="42" text-anchor="middle" class="head">SOC-Triage-Gym v2 — Multi-Agent Architecture</text>
+  <text x="600" y="64" text-anchor="middle" class="sub">Three trained roles · ticket-bus communication · self-improving red-team curriculum · LLM-judged oversight</text>
+
+  <!-- ALERT QUEUE -->
+  <rect x="40" y="120" width="160" height="100" class="infra"/>
+  <text x="120" y="148" text-anchor="middle" class="title">Alert Queue</text>
+  <text x="120" y="170" text-anchor="middle" class="sub">SIEM-style inbox</text>
+  <text x="120" y="186" text-anchor="middle" class="sub">noisy + adversarial</text>
+  <text x="120" y="204" text-anchor="middle" class="sub">9 task generators</text>
+
+  <!-- TIER-1 -->
+  <rect x="260" y="120" width="200" height="160" class="role"/>
+  <text x="360" y="148" text-anchor="middle" class="title">Tier-1 Analyst</text>
+  <text x="360" y="166" text-anchor="middle" class="phase">TRIAGE phase · 40 steps</text>
+  <text x="360" y="194" text-anchor="middle" class="sub">enrich · classify · escalate</text>
+  <text x="360" y="212" text-anchor="middle" class="sub">phase_complete</text>
+  <text x="360" y="244" text-anchor="middle" class="lbl">GRPO-trained</text>
+  <text x="360" y="262" text-anchor="middle" class="reward">reward = 0.6 role + 0.4 ΔF1</text>
+
+  <!-- TICKET BUS -->
+  <rect x="510" y="150" width="120" height="100" class="infra"/>
+  <text x="570" y="178" text-anchor="middle" class="title">Ticket Bus</text>
+  <text x="570" y="198" text-anchor="middle" class="sub">typed schema</text>
+  <text x="570" y="214" text-anchor="middle" class="sub">role-scoped views</text>
+  <text x="570" y="232" text-anchor="middle" class="sub">audit trail</text>
+
+  <!-- TIER-2 -->
+  <rect x="680" y="120" width="200" height="160" class="role"/>
+  <text x="780" y="148" text-anchor="middle" class="title">Tier-2 Responder</text>
+  <text x="780" y="166" text-anchor="middle" class="phase">RESPONSE phase · 20 steps</text>
+  <text x="780" y="194" text-anchor="middle" class="sub">forensic timeline</text>
+  <text x="780" y="212" text-anchor="middle" class="sub">isolate · close_case</text>
+  <text x="780" y="244" text-anchor="middle" class="lbl">scripted oracle (frozen)</text>
+  <text x="780" y="262" text-anchor="middle" class="reward">team-blended reward</text>
+
+  <!-- MANAGER -->
+  <rect x="930" y="120" width="220" height="160" class="role"/>
+  <text x="1040" y="148" text-anchor="middle" class="title">SOC Manager</text>
+  <text x="1040" y="166" text-anchor="middle" class="phase">OVERSIGHT phase · 8 steps</text>
+  <text x="1040" y="194" text-anchor="middle" class="sub">review_decision</text>
+  <text x="1040" y="212" text-anchor="middle" class="sub">flag_inconsistency</text>
+  <text x="1040" y="230" text-anchor="middle" class="sub">explain_team_behavior</text>
+  <text x="1040" y="262" text-anchor="middle" class="reward">scored by LLM judge</text>
+
+  <!-- LLM JUDGE -->
+  <rect x="930" y="340" width="220" height="100" class="judge"/>
+  <text x="1040" y="368" text-anchor="middle" class="title">Manager LLM Judge</text>
+  <text x="1040" y="388" text-anchor="middle" class="sub">Anthropic / OpenAI / heuristic</text>
+  <text x="1040" y="406" text-anchor="middle" class="sub">cached by trajectory hash</text>
+  <text x="1040" y="424" text-anchor="middle" class="sub">graders/manager_judge.py</text>
+
+  <!-- RED-TEAM GENERATOR -->
+  <rect x="40" y="340" width="200" height="120" class="red"/>
+  <text x="140" y="368" text-anchor="middle" class="title">Red-Team Generator</text>
+  <text x="140" y="386" text-anchor="middle" class="sub">parametric scenarios</text>
+  <text x="140" y="404" text-anchor="middle" class="sub">difficulty floor adapts</text>
+  <text x="140" y="422" text-anchor="middle" class="sub">round-by-round to blue WR</text>
+  <text x="140" y="446" text-anchor="middle" class="reward">target: WR oscillates @ 0.5</text>
+
+  <!-- GRPO TRAINER -->
+  <rect x="280" y="380" width="240" height="100" class="infra"/>
+  <text x="400" y="408" text-anchor="middle" class="title">GRPO Trainer (TRL)</text>
+  <text x="400" y="426" text-anchor="middle" class="sub">per-step reward shaping</text>
+  <text x="400" y="444" text-anchor="middle" class="sub">group=4–16 · LoRA r=16</text>
+  <text x="400" y="462" text-anchor="middle" class="sub">Qwen2.5-3B-Instruct base</text>
+
+  <!-- EXTERNAL ACTORS -->
+  <rect x="560" y="380" width="320" height="100" class="actor"/>
+  <text x="720" y="408" text-anchor="middle" class="title">External NPC Actors</text>
+  <text x="720" y="426" text-anchor="middle" class="sub">User Reports · IT Helpdesk · Threat-Intel Feed</text>
+  <text x="720" y="444" text-anchor="middle" class="sub">async bumps to inbox at fixed cadence</text>
+  <text x="720" y="462" text-anchor="middle" class="sub">actors/*.py</text>
+
+  <!-- REWARD INTEGRITY -->
+  <rect x="40" y="540" width="500" height="120" class="infra"/>
+  <text x="290" y="568" text-anchor="middle" class="title">Reward-Integrity Layer</text>
+  <text x="290" y="588" text-anchor="middle" class="sub">6 exploit vectors audited and locked down by regression tests</text>
+  <text x="290" y="608" text-anchor="middle" class="sub">NOOP-spam · duplicate-close · over-escalation · phase short-circuit</text>
+  <text x="290" y="624" text-anchor="middle" class="sub">spurious manager flags · judge-fallback bypass</text>
+  <text x="290" y="646" text-anchor="middle" class="reward">see reward_integrity_audit.png</text>
+
+  <!-- THEMES -->
+  <rect x="580" y="540" width="570" height="120" class="infra"/>
+  <text x="865" y="568" text-anchor="middle" class="title">OpenEnv Theme Coverage</text>
+  <text x="865" y="590" text-anchor="middle" class="sub">#1 Multi-Agent — three roles · ticket-bus · phase machine</text>
+  <text x="865" y="608" text-anchor="middle" class="sub">Fleet AI Oversight — Manager judges every team decision</text>
+  <text x="865" y="626" text-anchor="middle" class="sub">#4 Self-Improvement — Red-Team co-evolves with blue agent</text>
+  <text x="865" y="646" text-anchor="middle" class="sub">#2 Long-Horizon — APT campaign 250 steps, sparse delayed reward</text>
+
+  <!-- EDGES -->
+  <!-- Alert -> T1 -->
+  <line x1="200" y1="170" x2="260" y2="200" class="edge" marker-end="url(#arrow)"/>
+  <!-- T1 -> Bus -->
+  <line x1="460" y1="200" x2="510" y2="200" class="edge" marker-end="url(#arrow)"/>
+  <text x="485" y="190" text-anchor="middle" class="phase">escalate</text>
+  <!-- Bus -> T2 -->
+  <line x1="630" y1="200" x2="680" y2="200" class="edge" marker-end="url(#arrow)"/>
+  <!-- T2 -> Manager -->
+  <line x1="880" y1="200" x2="930" y2="200" class="edge" marker-end="url(#arrow)"/>
+  <text x="905" y="190" text-anchor="middle" class="phase">handoff</text>
+
+  <!-- Manager <-> Judge -->
+  <line x1="1040" y1="280" x2="1040" y2="340" class="edge-j" marker-end="url(#arrow-j)"/>
+
+  <!-- Red-Team -> Alert Queue -->
+  <line x1="140" y1="340" x2="140" y2="220" class="edge-r" marker-end="url(#arrow-r)"/>
+  <text x="170" y="280" class="phase">generates</text>
+
+  <!-- Trainer -> T1 (training the role) -->
+  <line x1="370" y1="380" x2="370" y2="280" class="edge" marker-end="url(#arrow)"/>
+  <text x="396" y="335" class="phase">policy update</text>
+
+  <!-- Actors -> Alert Queue (curved) -->
+  <path d="M 560 430 Q 320 480 200 220" class="edge" marker-end="url(#arrow)"/>
+  <text x="380" y="510" class="phase">async events → inbox</text>
+
+  <!-- Manager judge feedback to trainer -->
+  <path d="M 1040 440 Q 700 540 520 430" class="edge-j" marker-end="url(#arrow-j)"/>
+</svg>

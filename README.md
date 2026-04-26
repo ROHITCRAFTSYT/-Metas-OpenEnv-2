@@ -32,21 +32,14 @@ A real Security Operations Center has three tiers: Tier-1 triages alerts and esc
 
 ## Architecture
 
-```
-Alert Queue → [Tier-1 Analyst] → escalate_to_tier2 → [Tier-2 Responder] → [SOC Manager]
-               TRIAGE phase          ticket bus          RESPONSE phase      OVERSIGHT phase
-               (40 steps)                                (20 steps)          (8 steps)
-                                                                    ↑
-                                                         [Red-Team Generator]
-                                                         (adaptive curriculum)
-```
+![SOC-Triage-Gym v2 architecture](docs/architecture.svg)
 
 **Reward blend per step:**
 ```
 step_reward = 0.6 × role_specific_reward + 0.4 × Δteam_F1
 ```
 
-Team F1 uses delta (not sticky value) — NOOP-spamming after a correct classification yields zero team reward.
+Team F1 uses delta (not sticky value) — NOOP-spamming after a correct classification yields zero team reward. See the **Reward Integrity** section below for the six exploit vectors this defends against.
 
 ---
 
@@ -76,6 +69,25 @@ Team episodes run through three phases. Each phase has a dedicated step budget.
 **Manager actions:** `review_decision`, `override_classification`, `flag_inconsistency`, `explain_team_behavior`, `phase_complete`, `noop`
 
 Inter-role communication flows through the ticket bus (`POST /step` with `escalate_to_tier2` creates a ticket; `GET /inbox/{role}` retrieves it).
+
+---
+
+## Reward Integrity (Fleet AI Oversight)
+
+A reward function is only as good as the exploits it can't be farmed by. Six exploit vectors were found, fixed, and locked down by regression tests in [tests/test_team_mode.py](tests/test_team_mode.py).
+
+![Reward integrity audit](reward_integrity_audit.png)
+
+| # | Vector | Test | Fix |
+|---|---|---|---|
+| 1 | NOOP team_F1 farming | `test_team_f1_delta_not_sticky` | team_F1 reward is delta-based; consumed once on classification |
+| 2 | Duplicate `close_case` | `test_close_case_idempotency` | Repeat close on same alert is now penalized |
+| 3 | Over-escalation flooding | `test_over_escalation_penalty` | >25% escalation rate triggers a per-step role penalty |
+| 4 | Phase-complete short-circuit | `test_tier1_phase_complete_with_zero_escalations_short_circuits` | Empty `phase_complete` ends episode with zero score |
+| 5 | Spurious manager flags | `test_manager_flag_inconsistency_spurious_penalty` | Flagging consistent decisions is now penalized |
+| 6 | Judge-fallback bypass | `test_manager_judge_fallback_on_missing_api_key` | Heuristic fallback bounded to (0.001, 0.999), API-free |
+
+Reproduce with `python scripts/reward_integrity_audit.py`.
 
 ---
 
