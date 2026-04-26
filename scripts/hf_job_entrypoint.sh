@@ -50,7 +50,12 @@ cd "$WORKDIR"
 
 # --- python deps -----------------------------------------------------------
 echo "[setup] pip install env + GRPO stack"
-pip install --upgrade pip --quiet
+# Upgrade pip + setuptools + wheel before any editable install: the pytorch
+# base image ships with old setuptools that lacks setuptools.backends.legacy,
+# which our pyproject.toml build backend imports. Without this, the next
+# `pip install -e` fails with "BackendUnavailable: Cannot import
+# 'setuptools.backends.legacy'".
+pip install --upgrade --quiet "pip>=24" "setuptools>=70" "wheel>=0.43"
 pip install -e ".[dev]" --quiet
 pip install --quiet \
     "transformers<5" \
