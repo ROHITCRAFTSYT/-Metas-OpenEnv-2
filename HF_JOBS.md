@@ -20,9 +20,10 @@ One command, GPU runs in the cloud, you watch logs locally:
 ```bash
 hf jobs run \
     --flavor a10g-small \
-    --secret HF_TOKEN=$(hf auth whoami | grep -oE 'hf_[A-Za-z0-9]+' || cat ~/.cache/huggingface/token) \
+    --secrets HF_TOKEN \
+    --env GIT_REF=main \
     pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel \
-    bash -lc 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/master/scripts/hf_job_entrypoint.sh | bash'
+    bash -lc 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/scripts/hf_job_entrypoint.sh | bash'
 ```
 
 **What this does** (≈30 min on `a10g-small`):
@@ -56,12 +57,13 @@ Example with overrides:
 ```bash
 hf jobs run \
     --flavor a10g-small \
-    --secret HF_TOKEN=hf_xxx \
+    --secrets HF_TOKEN \
+    --env GIT_REF=main \
     --env NUM_EPOCHS=3 \
     --env SOC_TRAIN_TASKS=team_phishing_escalation \
     --env SOC_TRAIN_N_SEEDS=20 \
     pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel \
-    bash -lc 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/master/scripts/hf_job_entrypoint.sh | bash'
+    bash -lc 'curl -fsSL https://raw.githubusercontent.com/ROHITCRAFTSYT/-Metas-OpenEnv-2/main/scripts/hf_job_entrypoint.sh | bash'
 ```
 
 ## Watching progress
@@ -92,10 +94,12 @@ Check `hf jobs ps` for running jobs and `hf jobs logs <job-id>` for past runs.
 
 ## Troubleshooting
 
-**"HF_TOKEN secret not set"** — your token wasn't picked up. Pass it explicitly:
+**"HF_TOKEN secret not set"** — your token wasn't picked up. Either run `hf auth login` first then use `--secrets HF_TOKEN` (no value, picks up your stored token), or pass explicitly:
 ```bash
---secret HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+--secrets HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+**"Job image specification error: Invalid image name `--secret`"** — you used `--secret` (singular). The correct flag is `--secrets` (plural).
 
 **Job runs but no upload** — your token doesn't have write scope. Regenerate
 at <https://huggingface.co/settings/tokens> with **Write** permission.
